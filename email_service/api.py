@@ -1,0 +1,160 @@
+"""HTTP API wrapping email_service for service-to-service email sending."""
+from __future__ import annotations
+
+import logging
+import os
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field, field_validator
+
+from email_service.notifiers import MagicLinkNotifier, OTPNotifier
+from email_service.sender import SmtpConfig, SmtpSender
+
+logger = logging.getLogger(__name__)
+
+
+def _required_env(name: str) -> str:
+    val = os.environ.get(name)
+    if not val:
+        raise RuntimeError(f"Required environment variable missing: {name}")
+    return val
+
+
+def _no_crlf(value: str) -> str:
+    if "\r" in value or "\n" in value:
+        raise ValueError("CRLF characters are not allowed")
+    return value
+
+
+class SendEmailRequest(BaseModel):
+    to: str = Field(min_length=1)
+    subject: str = Field(min_length=1)
+    html_body: str = Field(min_length=1)
+    text_body: str | None = None
+    cc: list[str] | None = None
+    bcc: list[str] | None = None
+
+    @field_validator("to", "subject")
+    @classmethod
+    def _reject_crlf(cls, v: str) -> str:
+        return _no_crlf(v)
+
+    @field_validator("cc", "bcc")
+    @classmethod
+    def _reject_crlf_list(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        for item in v:
+            _no_crlf(item)
+        return v
+
+
+class SendMagicLinkRequest(BaseModel):
+    to: str = Field(min_length=1)
+    user_name: str = Field(min_length=1)
+    token: str = Field(min_length=1)
+
+    @field_validator("to")
+    @classmethod
+    def _reject_crlf(cls, v: str) -> str:
+        return _no_crlf(v)
+
+
+class SendOTPRequest(BaseModel):
+    to: str = Field(min_length=1)
+    user_name: str = Field(min_length=1)
+    code: str = Field(min_length=1)
+
+    @field_validator("to")
+    @classmethod
+    def _reject_crlf(cls, v: str) -> str:
+        return _no_crlf(v)
+
+
+class SendResult(BaseModel):
+    sent: bool
+
+
+def _build_sender_from_env() -> SmtpSender:
+    return SmtpSender(SmtpConfig(
+        host=_required_env("SMTP_HOST"),
+        port=int(os.environ.get("SMTP_PORT", "587")),
+        user=_required_env("SMTP_USER"),
+        password=_required_env("SMTP_PASSWORD"),
+        from_addr=os.environ.get("SMTP_FROM", ""),
+        use_tls=os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
+    ))
+
+
+def create_app(
+    *,
+    sender: SmtpSender | None = None,
+    api_key: str | None = None,
+    magic_link: MagicLinkNotifier | None = None,
+    otp: OTPNotifier | None = None,
+) -> FastAPI:
+    """Build the FastAPI app. Env vars are read only for arguments left as None."""
+    if sender is None:
+        sender = _build_sender_from_env()
+    if api_key is None:
+        api_key = _required_env("API_KEY")
+
+    if magic_link is None:
+        base_url = os.environ.get("MAGIC_LINK_BASE_URL")
+        if base_url:
+            magic_link = MagicLinkNotifier(sender, base_url=base_url)
+    if otp is None:
+        otp = OTPNotifier(sender)
+
+    app = FastAPI(title="email-service")
+    bearer = HTTPBearer(auto_error=False)
+
+    def verify_key(
+        creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    ) -> None:
+        if creds is None or creds.credentials != api_key:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
+            )
+
+    @app.post("/send", response_model=SendResult)
+    def send_email(
+        req: SendEmailRequest, _: None = Depends(verify_key)
+    ) -> SendResult:
+        ok = sender.send(
+            to=req.to,
+            subject=req.subject,
+            html_body=req.html_body,
+            text_body=req.text_body,
+            cc=req.cc,
+            bcc=req.bcc,
+        )
+        if not ok:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
+        return SendResult(sent=True)
+
+    @app.post("/send/magic-link", response_model=SendResult)
+    def send_magic_link(
+        req: SendMagicLinkRequest, _: None = Depends(verify_key)
+    ) -> SendResult:
+        if magic_link is None:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Magic link endpoint not configured (set MAGIC_LINK_BASE_URL)",
+            )
+        ok = magic_link.send(req.to, req.user_name, req.token)
+        if not ok:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
+        return SendResult(sent=True)
+
+    @app.post("/send/otp", response_model=SendResult)
+    def send_otp(
+        req: SendOTPRequest, _: None = Depends(verify_key)
+    ) -> SendResult:
+        ok = otp.send(req.to, req.user_name, req.code)
+        if not ok:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
+        return SendResult(sent=True)
+
+    return app

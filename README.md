@@ -5,8 +5,105 @@
 ## 설치
 
 ```bash
+# 라이브러리로만 사용 (Python 코드에서 import)
 pip install git+https://github.com/hwan96-ai/email-service.git
+
+# HTTP 서비스로 띄워서 사용 (다른 서비스가 REST로 호출)
+pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
+
+## 사용 모드
+
+1. **라이브러리** — 같은 Python 프로세스에서 직접 `SmtpSender`, `MagicLinkNotifier` 등을 import해 호출. 아래 [API](#api) 참고.
+2. **HTTP 서비스** — 별도 프로세스로 띄우고 다른 백엔드가 REST로 호출. 아래 [HTTP 서비스로 사용](#http-서비스로-사용-rest-api) 참고.
+
+## HTTP 서비스로 사용 (REST API)
+
+다른 서비스(Node/Go/Python 무관)가 HTTP로 메일 발송을 요청하는 방식. 자격증명은 서버 측 환경변수로만 보관하고, 클라이언트는 공유 `API_KEY`로 인증한다.
+
+### 기동
+
+```bash
+pip install -e ".[http]"
+
+# 필수
+export SMTP_HOST=smtp.gmail.com
+export SMTP_USER=sender@gmail.com
+export SMTP_PASSWORD=app-password
+export API_KEY=<임의의-긴-비밀문자열>
+
+# 선택
+export SMTP_PORT=587                       # 기본 587
+export SMTP_FROM=noreply@mycompany.com     # 기본은 SMTP_USER와 동일
+export SMTP_USE_TLS=true                   # 기본 true
+export MAGIC_LINK_BASE_URL=https://myapp.com  # /send/magic-link 쓸 때만 필수
+export HOST=127.0.0.1                      # 기본 127.0.0.1 (내부망 전제)
+export PORT=8000                           # 기본 8000
+
+python -m email_service
+```
+
+필수 환경변수가 비어 있으면 기동 즉시 `RuntimeError`로 실패한다 (fail-fast).
+
+### 엔드포인트
+
+모든 요청은 `Authorization: Bearer $API_KEY` 헤더 필요. 성공 시 `200 {"sent": true}`.
+
+| 메서드 | 경로 | body 필드 | 설명 |
+|---|---|---|---|
+| POST | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 일반 메일 |
+| POST | `/send/magic-link` | `to, user_name, token` | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
+| POST | `/send/otp` | `to, user_name, code` | OTP 메일 |
+
+에러 코드:
+- `401` — API 키 누락/오류
+- `422` — 필수 필드 누락 또는 헤더(`to`/`subject`/`cc`/`bcc`)에 CRLF 포함 (헤더 인젝션 차단)
+- `502` — SMTP 연결/발송 실패
+- `503` — 매직링크 엔드포인트인데 `MAGIC_LINK_BASE_URL` 미설정
+
+### 호출 예시
+
+**curl**
+```bash
+curl -X POST http://127.0.0.1:8000/send \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","subject":"Hi","html_body":"<p>Hello</p>"}'
+
+curl -X POST http://127.0.0.1:8000/send/magic-link \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","user_name":"홍길동","token":"abc123"}'
+
+curl -X POST http://127.0.0.1:8000/send/otp \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
+```
+
+**Python 클라이언트**
+```python
+import os, httpx
+
+client = httpx.Client(
+    base_url=os.environ["EMAIL_SERVICE_URL"],           # 예: http://email-service:8000
+    headers={"Authorization": f"Bearer {os.environ['EMAIL_API_KEY']}"},
+    timeout=10,
+)
+
+resp = client.post("/send/otp", json={
+    "to": "user@example.com",
+    "user_name": "홍길동",
+    "code": "482901",
+})
+resp.raise_for_status()   # 401/422/502/503 → 예외
+```
+
+### 운영 주의사항
+
+- **내부망 전제**: 기본 `HOST=127.0.0.1`. 외부에 노출할 경우 앞단 TLS 종단·WAF 별도 필요.
+- **단일 API 키**: 모든 호출자가 같은 키 공유. 호출자별 구분이 필요하면 키 분리나 리버스 프록시 레벨 인증을 추가.
+- **프로그램적 통합**: OpenAPI 문서는 기본 활성화된 `/docs` (Swagger UI), `/openapi.json`에서 조회.
 
 ## 구조
 
