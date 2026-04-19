@@ -29,22 +29,44 @@ class SmtpSender:
     def __init__(self, config: SmtpConfig):
         self._cfg = config
 
-    def send(self, to: str, subject: str, html_body: str) -> bool:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        html_body: str,
+        *,
+        text_body: str | None = None,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> bool:
+        for value in (self._cfg.from_addr, subject, to, *(cc or ()), *(bcc or ())):
+            if "\r" in value or "\n" in value:
+                logger.warning("Rejected email to %s: CRLF in header value", to)
+                return False
+
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = self._cfg.from_addr
         msg["To"] = to
+        if cc:
+            msg["Cc"] = ", ".join(cc)
+
+        # multipart/alternative: plain text must precede HTML so clients
+        # without HTML support fall back correctly.
+        if text_body is not None:
+            msg.attach(MIMEText(text_body, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+        recipients = [to] + list(cc or []) + list(bcc or [])
+
         try:
-            server = smtplib.SMTP(self._cfg.host, self._cfg.port,
-                                  timeout=self._cfg.timeout)
-            if self._cfg.use_tls:
-                server.starttls()
-            if self._cfg.user and self._cfg.password:
-                server.login(self._cfg.user, self._cfg.password)
-            server.sendmail(self._cfg.from_addr, [to], msg.as_string())
-            server.quit()
+            with smtplib.SMTP(self._cfg.host, self._cfg.port,
+                              timeout=self._cfg.timeout) as server:
+                if self._cfg.use_tls:
+                    server.starttls()
+                if self._cfg.user and self._cfg.password:
+                    server.login(self._cfg.user, self._cfg.password)
+                server.sendmail(self._cfg.from_addr, recipients, msg.as_string())
             logger.info("Email sent to %s", to)
             return True
         except Exception:

@@ -56,8 +56,12 @@ success = sender.send(
     to="recipient@example.com",
     subject="제목",
     html_body="<h1>본문</h1>",
+    text_body="본문",              # 선택: plain-text 대체본
+    cc=["cc@example.com"],         # 선택
+    bcc=["bcc@example.com"],       # 선택
 )
 # 반환: True (성공) / False (실패, 로그에 에러 기록)
+# 헤더 값(to/subject/from/cc/bcc)에 CR/LF가 포함되면 발송 거부 (CRLF 인젝션 차단)
 ```
 
 ### MagicLinkNotifier
@@ -111,6 +115,35 @@ notifier = OTPNotifier(
 notifier.send("user@example.com", "홍길동", "482901")
 # → 이메일 본문에 482901 코드 표시
 ```
+
+### TemplateNotifier
+
+임의의 제목/HTML 템플릿으로 이메일을 렌더링해 발송. 매직링크/OTP처럼 `(user_name, payload)` 고정 시그니처가 맞지 않는 케이스용.
+
+```python
+from email_service import SmtpSender, TemplateNotifier
+from email_service.sender import SmtpConfig
+
+sender = SmtpSender(SmtpConfig(host="smtp.gmail.com", user="noreply@x.com", password="..."))
+
+notifier = TemplateNotifier(
+    sender,
+    subject="[MyApp] {order_id} 주문이 접수되었습니다",
+    html_template="<p>{user_name}님, 주문 {order_id}번이 접수되었습니다. 금액: {amount}원</p>",
+    text_template="{user_name}님, 주문 {order_id}번 접수. 금액: {amount}원",  # 선택
+    autoescape=True,   # 기본 True — context 값의 HTML 특수문자를 이스케이프
+)
+
+notifier.send(
+    "user@example.com",
+    user_name="홍길동",
+    order_id="A-1024",
+    amount="45,000",
+)
+```
+
+- 템플릿은 `str.format` 문법. 플레이스홀더(`{key}`)는 `send(**context)`의 키워드와 매칭.
+- `autoescape=True`(기본)에서 HTML 템플릿의 context 값은 `html.escape`로 이스케이프됨. subject/text_template은 이스케이프하지 않음.
 
 ### 커스텀 Notifier 만들기
 
