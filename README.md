@@ -91,6 +91,53 @@ sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
 ---
 
+## Docker 로 실행
+
+다른 서비스가 REST 로 호출하는 운영 시나리오라면 `Dockerfile` + `docker-compose.yml` + `.env.example` 이 함께 제공된다. Docker 이미지는 **Python 3.12 slim** 기반이며, 로컬 개발(Python 3.10+) 과 별개이다.
+
+### 1) 환경변수 파일 준비
+
+```bash
+cp .env.example .env
+# 에디터로 .env 열어 SMTP_HOST / SMTP_USER / SMTP_PASSWORD / API_KEY 채움
+# API_KEY 생성: openssl rand -hex 32
+```
+
+`.env` 는 `.gitignore` 되어 있다. 절대 커밋하지 말 것.
+
+### 2) 빌드 & 기동
+
+```bash
+docker compose up -d --build
+```
+
+- 이미지: `python:3.12-slim` 베이스, uid `10001` 의 non-root `app` 유저로 실행.
+- 컨테이너 내부 `HOST=0.0.0.0`, `PORT=8000` (Dockerfile/compose 에 기본 설정).
+- 호스트 `8000` ↔ 컨테이너 `8000` 포트 매핑 (`docker-compose.yml` 의 `ports:`).
+
+### 3) 호출
+
+```bash
+curl -X POST http://127.0.0.1:8000/send \
+  -H "Authorization: Bearer $(grep ^API_KEY .env | cut -d= -f2-)" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","subject":"Hi","html_body":"<p>Hello</p>"}'
+```
+
+### 4) 로그 / 중지
+
+```bash
+docker compose logs -f email-service    # 로그 추적
+docker compose down                     # 정지 및 컨테이너 제거
+```
+
+### 운영 배포 참고
+
+- `docker-compose.yml` 은 편의를 위해 `ports: "8000:8000"` 으로 호스트에 직접 공개한다. **공용 인터넷에는 노출 금지.** 내부망 / VPC / 방화벽 안에 두고 앞단에 Reverse Proxy (nginx, Traefik 등) + TLS 종단을 구성한다.
+- 같은 Docker 네트워크 안의 다른 컨테이너만 호출하면 되는 경우 `ports:` 를 제거하고 `expose: ["8000"]` 로 바꾸면 호스트 포트가 열리지 않는다.
+
+---
+
 ## HTTP API 사용법
 
 ### 엔드포인트
@@ -335,14 +382,14 @@ HTTP 서비스 모드 (`python -m email_service`) 에서 사용한다. 라이브
 | `SMTP_FROM` | `SMTP_USER` 와 동일 | 발신자 주소 |
 | `SMTP_USE_TLS` | `true` | STARTTLS 사용 여부 (`false` 로 설정 시 비활성) |
 | `MAGIC_LINK_BASE_URL` | — | `/send/magic-link` 엔드포인트 활성화용 프론트엔드 URL. 미설정 시 해당 엔드포인트는 `503` 반환 |
-| `HOST` | `127.0.0.1` | uvicorn 바인딩 호스트 (기본은 내부망 전제) |
+| `HOST` | `127.0.0.1` | uvicorn 바인딩 호스트. 로컬 `python -m email_service` 기본값은 `127.0.0.1` (루프백). Docker 실행 시에는 컨테이너 밖에서 접근 가능해야 하므로 `0.0.0.0` 을 사용한다 (제공된 `Dockerfile` / `docker-compose.yml` 이 이미 `0.0.0.0` 으로 설정) |
 | `PORT` | `8000` | uvicorn 바인딩 포트 |
 
 ---
 
 ## 보안 및 운영 주의사항
 
-- **내부망 전제** — 기본 `HOST=127.0.0.1`. 외부에 노출할 경우 앞단에 TLS 종단·WAF 가 별도로 필요하다.
+- **내부망 전제** — 로컬 `python -m email_service` 기본 `HOST=127.0.0.1`. 제공되는 `docker-compose.yml` 은 편의를 위해 `ports: "8000:8000"` 으로 호스트에 공개하지만, **운영에서 이 포트를 공용 인터넷에 직접 노출하지 말 것**. 내부망·VPC·방화벽 뒤에 두고 앞단에 Reverse Proxy / TLS 종단 / WAF 를 구성한다. 외부 완전 차단이 필요하면 `docker-compose.yml` 의 `ports:` 를 `expose:` 로 바꾸면 같은 compose 네트워크의 다른 컨테이너만 접근하게 된다.
 - **단일 API 키** — 모든 호출자가 같은 키를 공유한다. 호출자별 구분이 필요하면 키를 분리하거나 리버스 프록시 레벨에서 인증을 추가한다.
 - **CRLF 헤더 인젝션** — `SmtpSender` 와 HTTP API Pydantic 모델 양쪽에서 `to`/`subject`/`from`/`cc`/`bcc` 의 CR/LF 를 차단한다. 사용자 입력을 그대로 넘겨도 안전하다.
 - **HTML 이스케이프** — 내장 Notifier 들은 user_name, token, code, context 를 기본적으로 `html.escape` 처리한다. HTML 구조 자체를 사용자 입력으로 만들지는 말 것.
