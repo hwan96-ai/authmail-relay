@@ -55,6 +55,7 @@ class EmailServiceClient:
         to: str,
         subject: str,
         html_body: str,
+        *,
         text_body: str | None = None,
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
@@ -78,6 +79,7 @@ class EmailServiceClient:
         to: str,
         user_name: str,
         token: str,
+        *,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         return self._post(
@@ -91,6 +93,7 @@ class EmailServiceClient:
         to: str,
         user_name: str,
         code: str,
+        *,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         return self._post(

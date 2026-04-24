@@ -138,6 +138,34 @@ class TestSendOTP:
         assert reqs[0].headers.get("x-dry-run") == "true"
 
 
+class TestKeywordOnlyDryRun:
+    """dry_run must be keyword-only to prevent silent binding to text_body/etc."""
+
+    def test_send_rejects_positional_dry_run(self):
+        h, _ = _handler({("POST", "/send"): (200, {"sent": True})})
+        with _client(h) as c:
+            with pytest.raises(TypeError):
+                c.send("a@b.com", "hi", "<p>x</p>", True)
+
+    def test_send_magic_link_rejects_positional_dry_run(self):
+        h, _ = _handler({("POST", "/send/magic-link"): (200, {"sent": True})})
+        with _client(h) as c:
+            with pytest.raises(TypeError):
+                c.send_magic_link("a@b.com", "홍길동", "tok", True)
+
+    def test_send_otp_rejects_positional_dry_run(self):
+        h, _ = _handler({("POST", "/send/otp"): (200, {"sent": True})})
+        with _client(h) as c:
+            with pytest.raises(TypeError):
+                c.send_otp("a@b.com", "홍길동", "123456", True)
+
+    def test_keyword_dry_run_still_works(self):
+        h, reqs = _handler({("POST", "/send/otp"): (200, {"sent": False, "dry_run": True})})
+        with _client(h) as c:
+            c.send_otp("a@b.com", "홍길동", "123456", dry_run=True)
+        assert reqs[0].headers.get("x-dry-run") == "true"
+
+
 class TestContextManager:
     def test_closes_on_exit(self):
         h, _ = _handler({})
