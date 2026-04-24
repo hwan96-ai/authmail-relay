@@ -1,87 +1,152 @@
 # email-service
 
-범용 SMTP 이메일 발송 패키지. 매직링크, OTP 등 플러그인 방식의 notifier를 제공한다.
+[![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](https://www.python.org/)
 
-## 설치
+범용 SMTP 이메일 발송 패키지. Python 라이브러리로 직접 import해 쓰거나, FastAPI 기반 HTTP 서비스로 띄워 REST API로 호출할 수 있다.
+
+---
+
+## 소개
+
+`email-service`는 SMTP로 HTML 이메일을 보내기 위한 재사용 가능한 파이썬 패키지이다. 다음 두 가지 사용 방식을 모두 지원한다.
+
+- **라이브러리 모드** — 같은 Python 프로세스에서 `SmtpSender`, `MagicLinkNotifier` 등을 직접 import해 호출한다. 외부 의존성 없음 (표준 라이브러리의 `smtplib`, `email`만 사용).
+- **HTTP 서비스 모드** — `python -m email_service` 로 FastAPI 서버를 기동하고, 다른 백엔드(언어 무관)가 REST로 메일 발송을 요청한다. SMTP 자격증명을 서버 측 환경변수에만 보관하고 호출자는 공유 `API_KEY` 로 인증한다.
+
+비밀번호 설정 매직링크 / 일회용 인증코드(OTP) 같은 자주 쓰이는 템플릿은 기본 제공되며, 커스텀 템플릿도 쉽게 추가할 수 있다.
+
+---
+
+## 주요 기능
+
+- **HTML + plain-text multipart 발송** — `text_body` 를 넘기면 HTML 미지원 클라이언트를 위한 대체본이 함께 첨부된다.
+- **cc / bcc 지원** — 헤더/수신자 목록에 올바르게 반영. bcc 는 헤더에 노출되지 않는다.
+- **CRLF 헤더 인젝션 차단** — `to`, `subject`, `from`, `cc`, `bcc` 에 `\r` / `\n` 이 포함되면 발송을 거부한다. HTTP API 에서는 sender 까지 가기 전 Pydantic 단계에서 `422` 로 차단.
+- **HTML 자동 이스케이프** — `MagicLinkNotifier` / `OTPNotifier` / `TemplateNotifier` 의 사용자 입력 값 (user_name, token, code, context) 은 기본적으로 `html.escape` 처리된다.
+- **플러그인 방식 Notifier** — `Notifier` 추상 클래스 상속으로 새로운 이메일 템플릿을 손쉽게 추가.
+- **STARTTLS + SMTP AUTH** — `SmtpConfig.use_tls` / `user` / `password` 로 제어. 자격증명이 비면 AUTH 생략.
+- **Fail-fast 기동** — HTTP 모드에서 필수 환경변수가 비어 있으면 `RuntimeError` 로 즉시 실패.
+- **OpenAPI 문서 자동 제공** — 기본 활성화된 [`/docs`](http://127.0.0.1:8000/docs) (Swagger UI), `/openapi.json`.
+
+---
+
+## 사용 방식
+
+| 모드 | 설치 | 실행 | 용도 |
+|---|---|---|---|
+| 라이브러리 | `pip install git+...` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
+| HTTP 서비스 | `pip install "email-service[http] @ git+..."` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
+
+설치 명령 전체 예시:
 
 ```bash
-# 라이브러리로만 사용 (Python 코드에서 import)
+# 라이브러리로만 사용
 pip install git+https://github.com/hwan96-ai/email-service.git
 
-# HTTP 서비스로 띄워서 사용 (다른 서비스가 REST로 호출)
+# HTTP 서비스로 띄워서 사용
 pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
 
-## 사용 모드
+요구 사항: Python **3.10+**.
 
-1. **라이브러리** — 같은 Python 프로세스에서 직접 `SmtpSender`, `MagicLinkNotifier` 등을 import해 호출. 아래 [API](#api) 참고.
-2. **HTTP 서비스** — 별도 프로세스로 띄우고 다른 백엔드가 REST로 호출. 아래 [HTTP 서비스로 사용](#http-서비스로-사용-rest-api) 참고.
+---
 
-## HTTP 서비스로 사용 (REST API)
+## 빠른 시작
 
-다른 서비스(Node/Go/Python 무관)가 HTTP로 메일 발송을 요청하는 방식. 자격증명은 서버 측 환경변수로만 보관하고, 클라이언트는 공유 `API_KEY`로 인증한다.
-
-### 기동
+### HTTP 서비스로 띄워 curl 로 테스트
 
 ```bash
-pip install -e ".[http]"
+# 1) 설치
+pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 
-# 필수
+# 2) 환경변수 설정 (최소)
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
-export API_KEY=<임의의-긴-비밀문자열>
+export API_KEY=$(openssl rand -hex 32)     # 임의의 긴 비밀문자열
 
-# 선택
-export SMTP_PORT=587                       # 기본 587
-export SMTP_FROM=noreply@mycompany.com     # 기본은 SMTP_USER와 동일
-export SMTP_USE_TLS=true                   # 기본 true
-export MAGIC_LINK_BASE_URL=https://myapp.com  # /send/magic-link 쓸 때만 필수
-export HOST=127.0.0.1                      # 기본 127.0.0.1 (내부망 전제)
-export PORT=8000                           # 기본 8000
-
+# 3) 기동
 python -m email_service
-```
+#   → INFO:     Uvicorn running on http://127.0.0.1:8000
 
-필수 환경변수가 비어 있으면 기동 즉시 `RuntimeError`로 실패한다 (fail-fast).
-
-### 엔드포인트
-
-모든 요청은 `Authorization: Bearer $API_KEY` 헤더 필요. 성공 시 `200 {"sent": true}`.
-
-| 메서드 | 경로 | body 필드 | 설명 |
-|---|---|---|---|
-| POST | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 일반 메일 |
-| POST | `/send/magic-link` | `to, user_name, token` | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
-| POST | `/send/otp` | `to, user_name, code` | OTP 메일 |
-
-에러 코드:
-- `401` — API 키 누락/오류
-- `422` — 필수 필드 누락 또는 헤더(`to`/`subject`/`cc`/`bcc`)에 CRLF 포함 (헤더 인젝션 차단)
-- `502` — SMTP 연결/발송 실패
-- `503` — 매직링크 엔드포인트인데 `MAGIC_LINK_BASE_URL` 미설정
-
-### 호출 예시
-
-**curl**
-```bash
+# 4) 호출 (다른 터미널에서)
 curl -X POST http://127.0.0.1:8000/send \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"to":"user@example.com","subject":"Hi","html_body":"<p>Hello</p>"}'
+#   → {"sent":true}
+```
 
+### Python 라이브러리로 한 줄 발송
+
+```python
+from email_service import SmtpSender
+from email_service.sender import SmtpConfig
+
+sender = SmtpSender(SmtpConfig(
+    host="smtp.gmail.com", user="sender@gmail.com", password="app-password",
+))
+sender.send("user@example.com", "Hi", "<p>Hello</p>")
+```
+
+---
+
+## HTTP API 사용법
+
+### 엔드포인트
+
+모든 요청은 `Authorization: Bearer $API_KEY` 헤더가 필요하다. 성공 시 `200 {"sent": true}`.
+
+| 메서드 | 경로 | 요청 body | 설명 |
+|---|---|---|---|
+| `POST` | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 일반 메일 |
+| `POST` | `/send/magic-link` | `to, user_name, token` | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
+| `POST` | `/send/otp` | `to, user_name, code` | OTP 메일 |
+
+### 에러 코드
+
+| 코드 | 의미 |
+|---|---|
+| `401` | API 키 누락/오류 |
+| `422` | 필수 필드 누락, 또는 헤더 (`to`/`subject`/`cc`/`bcc`) 에 CRLF 포함 (헤더 인젝션 차단) |
+| `502` | SMTP 연결 또는 발송 실패 |
+| `503` | `/send/magic-link` 호출 시 `MAGIC_LINK_BASE_URL` 미설정 |
+
+### curl 호출 예시
+
+**일반 메일 (cc/bcc 포함):**
+```bash
+curl -X POST http://127.0.0.1:8000/send \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "to":"user@example.com",
+        "subject":"Hi",
+        "html_body":"<p>Hello</p>",
+        "text_body":"Hello",
+        "cc":["cc@example.com"],
+        "bcc":["bcc@example.com"]
+      }'
+```
+
+**매직링크 메일:**
+```bash
 curl -X POST http://127.0.0.1:8000/send/magic-link \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"to":"user@example.com","user_name":"홍길동","token":"abc123"}'
+```
 
+**OTP 메일:**
+```bash
 curl -X POST http://127.0.0.1:8000/send/otp \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
 ```
 
-**Python 클라이언트**
+### Python 클라이언트 (httpx)
+
 ```python
 import os, httpx
 
@@ -99,42 +164,37 @@ resp = client.post("/send/otp", json={
 resp.raise_for_status()   # 401/422/502/503 → 예외
 ```
 
-### 운영 주의사항
+---
 
-- **내부망 전제**: 기본 `HOST=127.0.0.1`. 외부에 노출할 경우 앞단 TLS 종단·WAF 별도 필요.
-- **단일 API 키**: 모든 호출자가 같은 키 공유. 호출자별 구분이 필요하면 키 분리나 리버스 프록시 레벨 인증을 추가.
-- **프로그램적 통합**: OpenAPI 문서는 기본 활성화된 `/docs` (Swagger UI), `/openapi.json`에서 조회.
+## Python 라이브러리로 사용하기
 
-## 구조
+패키지의 공개 API:
 
-```
-email_service/
-  sender.py       # SmtpConfig, SmtpSender — SMTP 발송 코어
-  notifiers.py    # Notifier(ABC), MagicLinkNotifier, OTPNotifier
-  __init__.py      # 공개 API re-export
+```python
+from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier, TemplateNotifier
+from email_service.sender import SmtpConfig
+from email_service.notifiers import Notifier   # 커스텀 Notifier 만들 때
 ```
 
-## API
+### `SmtpConfig`
 
-### SmtpConfig
-
-SMTP 연결 설정. dataclass.
+SMTP 연결 설정. 단순 dataclass.
 
 ```python
 from email_service.sender import SmtpConfig
 
 config = SmtpConfig(
-    host="smtp.gmail.com",   # SMTP 서버 (기본: smtp.gmail.com)
-    port=587,                # 포트 (기본: 587)
+    host="smtp.gmail.com",   # 기본: smtp.gmail.com
+    port=587,                # 기본: 587
     user="sender@gmail.com", # 로그인 계정
     password="app-password", # 앱 비밀번호
-    from_addr="",            # 발신자 주소 (비우면 user와 동일)
+    from_addr="",            # 발신자 주소 (비우면 user 와 동일)
     use_tls=True,            # STARTTLS 사용 여부 (기본: True)
     timeout=10,              # 연결 타임아웃 초 (기본: 10)
 )
 ```
 
-### SmtpSender
+### `SmtpSender`
 
 HTML 이메일을 발송하는 저수준 sender.
 
@@ -148,12 +208,11 @@ sender = SmtpSender(SmtpConfig(
     password="app-password",
 ))
 
-# 직접 발송
 success = sender.send(
     to="recipient@example.com",
     subject="제목",
     html_body="<h1>본문</h1>",
-    text_body="본문",              # 선택: plain-text 대체본
+    text_body="본문",              # 선택: plain-text 대체본 (multipart/alternative 의 fallback)
     cc=["cc@example.com"],         # 선택
     bcc=["bcc@example.com"],       # 선택
 )
@@ -161,61 +220,53 @@ success = sender.send(
 # 헤더 값(to/subject/from/cc/bcc)에 CR/LF가 포함되면 발송 거부 (CRLF 인젝션 차단)
 ```
 
-### MagicLinkNotifier
+### `MagicLinkNotifier`
 
-비밀번호 설정 매직링크 이메일을 보내는 notifier.
+비밀번호 설정 매직링크 이메일.
 
 ```python
 from email_service import SmtpSender, MagicLinkNotifier
 from email_service.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
-    host="smtp.gmail.com",
-    user="noreply@mycompany.com",
-    password="app-password",
+    host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
 ))
 
 notifier = MagicLinkNotifier(
     sender,
     base_url="https://myapp.com",      # 필수: 프론트엔드 URL
-    path="/set-password",               # 선택: 링크 경로 (기본: /set-password)
-    subject_prefix="[MyApp] ",          # 선택: 메일 제목 접두어
-    expire_minutes=15,                  # 선택: 링크 유효시간 표시 (기본: 15)
+    path="/set-password",              # 선택: 링크 경로 (기본)
+    subject_prefix="[MyApp] ",         # 선택: 메일 제목 접두어
+    expire_minutes=15,                 # 선택: 본문에 표시할 유효시간 (기본: 15)
 )
 
-# payload = 토큰 문자열
+# payload = 토큰 문자열. 토큰은 URL 인코딩되어 링크에 포함된다.
 notifier.send("user@example.com", "홍길동", "abc123token")
-# → 이메일 본문에 https://myapp.com/set-password?token=abc123token 링크 포함
+# → 본문에 https://myapp.com/set-password?token=abc123token 링크 삽입
 ```
 
-### OTPNotifier
+### `OTPNotifier`
 
-일회용 인증코드 이메일을 보내는 notifier.
+일회용 인증코드 이메일.
 
 ```python
 from email_service import SmtpSender, OTPNotifier
 from email_service.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
-    host="smtp.gmail.com",
-    user="noreply@mycompany.com",
-    password="app-password",
+    host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
 ))
 
-notifier = OTPNotifier(
-    sender,
-    subject_prefix="[MyApp] ",
-    expire_minutes=5,
-)
+notifier = OTPNotifier(sender, subject_prefix="[MyApp] ", expire_minutes=5)
 
 # payload = OTP 코드 문자열
 notifier.send("user@example.com", "홍길동", "482901")
-# → 이메일 본문에 482901 코드 표시
+# → 본문에 482901 코드를 큰 글씨로 표시
 ```
 
-### TemplateNotifier
+### `TemplateNotifier`
 
-임의의 제목/HTML 템플릿으로 이메일을 렌더링해 발송. 매직링크/OTP처럼 `(user_name, payload)` 고정 시그니처가 맞지 않는 케이스용.
+임의의 제목/HTML 템플릿으로 메일을 렌더링해 발송. `(user_name, payload)` 고정 시그니처가 맞지 않는 케이스용.
 
 ```python
 from email_service import SmtpSender, TemplateNotifier
@@ -228,23 +279,21 @@ notifier = TemplateNotifier(
     subject="[MyApp] {order_id} 주문이 접수되었습니다",
     html_template="<p>{user_name}님, 주문 {order_id}번이 접수되었습니다. 금액: {amount}원</p>",
     text_template="{user_name}님, 주문 {order_id}번 접수. 금액: {amount}원",  # 선택
-    autoescape=True,   # 기본 True — context 값의 HTML 특수문자를 이스케이프
+    autoescape=True,   # 기본 True — HTML 본문의 context 값만 html.escape 처리
 )
 
 notifier.send(
     "user@example.com",
-    user_name="홍길동",
-    order_id="A-1024",
-    amount="45,000",
+    user_name="홍길동", order_id="A-1024", amount="45,000",
 )
 ```
 
-- 템플릿은 `str.format` 문법. 플레이스홀더(`{key}`)는 `send(**context)`의 키워드와 매칭.
-- `autoescape=True`(기본)에서 HTML 템플릿의 context 값은 `html.escape`로 이스케이프됨. subject/text_template은 이스케이프하지 않음.
+- 템플릿은 `str.format` 문법. 플레이스홀더 (`{key}`) 는 `send(**context)` 의 키워드와 매칭.
+- `autoescape=True` 에서 **HTML 템플릿의 context 값만** 이스케이프된다. subject/text_template 은 HTML 컨텍스트가 아니므로 이스케이프하지 않음.
 
-### 커스텀 Notifier 만들기
+### 커스텀 Notifier
 
-`Notifier` 추상 클래스를 상속해서 새로운 이메일 템플릿을 추가할 수 있다.
+`Notifier` 를 상속하면 새 템플릿을 쉽게 추가할 수 있다.
 
 ```python
 from email_service.notifiers import Notifier
@@ -261,40 +310,84 @@ class WelcomeNotifier(Notifier):
         return self._sender.send(to_email, subject, html)
 ```
 
-## 프로젝트에서 사용하는 예시 (인바운드콜 auth)
+---
 
-```python
-# auth/email_service.py
-from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig
-from email_service.notifiers import Notifier
+## 환경변수
 
-_sender = SmtpSender(SmtpConfig(
-    host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
-    port=int(os.getenv("SMTP_PORT", "587")),
-    user=os.getenv("SMTP_USER"),
-    password=os.getenv("SMTP_PASSWORD"),
-))
+HTTP 서비스 모드 (`python -m email_service`) 에서 사용한다. 라이브러리 모드에서는 무관하다.
 
-def get_notifier(method: str = "email_magic_link") -> Notifier:
-    if method == "email_otp":
-        return OTPNotifier(_sender, subject_prefix="[Saltware] ")
-    return MagicLinkNotifier(
-        _sender,
-        base_url=os.getenv("FRONTEND_BASE_URL", "http://localhost:3000"),
-        subject_prefix="[Saltware] ",
-    )
-```
+### 필수
 
-## 테스트
+| 이름 | 설명 |
+|---|---|
+| `SMTP_HOST` | SMTP 서버 호스트 (예: `smtp.gmail.com`) |
+| `SMTP_USER` | SMTP 로그인 계정 |
+| `SMTP_PASSWORD` | SMTP 비밀번호 / 앱 비밀번호 |
+| `API_KEY` | 클라이언트가 `Authorization: Bearer` 로 보내는 공유 비밀 키 |
+
+필수 환경변수가 비어 있으면 기동 즉시 `RuntimeError` 로 실패한다 (fail-fast).
+
+### 선택
+
+| 이름 | 기본값 | 설명 |
+|---|---|---|
+| `SMTP_PORT` | `587` | SMTP 포트 |
+| `SMTP_FROM` | `SMTP_USER` 와 동일 | 발신자 주소 |
+| `SMTP_USE_TLS` | `true` | STARTTLS 사용 여부 (`false` 로 설정 시 비활성) |
+| `MAGIC_LINK_BASE_URL` | — | `/send/magic-link` 엔드포인트 활성화용 프론트엔드 URL. 미설정 시 해당 엔드포인트는 `503` 반환 |
+| `HOST` | `127.0.0.1` | uvicorn 바인딩 호스트 (기본은 내부망 전제) |
+| `PORT` | `8000` | uvicorn 바인딩 포트 |
+
+---
+
+## 보안 및 운영 주의사항
+
+- **내부망 전제** — 기본 `HOST=127.0.0.1`. 외부에 노출할 경우 앞단에 TLS 종단·WAF 가 별도로 필요하다.
+- **단일 API 키** — 모든 호출자가 같은 키를 공유한다. 호출자별 구분이 필요하면 키를 분리하거나 리버스 프록시 레벨에서 인증을 추가한다.
+- **CRLF 헤더 인젝션** — `SmtpSender` 와 HTTP API Pydantic 모델 양쪽에서 `to`/`subject`/`from`/`cc`/`bcc` 의 CR/LF 를 차단한다. 사용자 입력을 그대로 넘겨도 안전하다.
+- **HTML 이스케이프** — 내장 Notifier 들은 user_name, token, code, context 를 기본적으로 `html.escape` 처리한다. HTML 구조 자체를 사용자 입력으로 만들지는 말 것.
+- **자격증명 관리** — `SMTP_PASSWORD`, `API_KEY` 는 .env / secret store 등 외부에 보관하고 저장소에 커밋하지 않는다.
+- **OpenAPI 스펙** — 기본 활성화된 `/docs` (Swagger UI), `/openapi.json` 에서 조회 가능. 운영에서 불필요하다면 외부 노출 전에 앞단에서 차단한다.
+
+---
+
+## 개발 및 테스트
 
 ```bash
 git clone https://github.com/hwan96-ai/email-service.git
 cd email-service
+
+# 개발 의존성 설치 (pytest, httpx)
 pip install -e ".[dev]"
+
+# HTTP 모드 테스트까지 같이 돌리려면 http extras 도
+pip install -e ".[dev,http]"
+
+# 전체 테스트
 python -m pytest tests/ -v
+
+# 일부만
+python -m pytest tests/test_email_service.py -v   # 코어 유닛 테스트
+python -m pytest tests/test_api.py -v             # HTTP API 통합 테스트
 ```
 
-## 의존성
+테스트는 실제 SMTP 서버에 연결하지 않는다 (`smtplib.SMTP` 를 mock 처리).
 
-외부 의존성 없음. Python 표준 라이브러리(smtplib, email)만 사용.
+---
+
+## 프로젝트 구조
+
+```
+email-service/
+├── email_service/
+│   ├── __init__.py        # 공개 API re-export (SmtpSender, *Notifier)
+│   ├── __main__.py        # `python -m email_service` 진입점 (uvicorn 기동)
+│   ├── api.py             # FastAPI 앱 (create_app) + Pydantic 모델 + 인증
+│   ├── sender.py          # SmtpConfig, SmtpSender — SMTP 발송 코어
+│   └── notifiers.py       # Notifier(ABC), MagicLinkNotifier, OTPNotifier, TemplateNotifier
+├── tests/
+│   ├── test_email_service.py   # sender + notifier 유닛 테스트
+│   └── test_api.py             # HTTP API 통합 테스트
+├── pyproject.toml         # 패키지 메타 + optional extras (dev, http)
+└── README.md
+```
