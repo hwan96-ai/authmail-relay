@@ -29,6 +29,21 @@ def _auth():
     return {"Authorization": f"Bearer {API_KEY}"}
 
 
+class TestHealth:
+    def test_returns_ok(self):
+        client = TestClient(_app())
+        resp = client.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_no_auth_required(self):
+        client = TestClient(_app())
+        resp = client.get("/health")
+
+        assert resp.status_code == 200
+
+
 class TestSendEmail:
     def test_success(self):
         sender = MagicMock()

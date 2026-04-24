@@ -66,7 +66,16 @@ class SmtpSender:
                     server.starttls()
                 if self._cfg.user and self._cfg.password:
                     server.login(self._cfg.user, self._cfg.password)
-                server.sendmail(self._cfg.from_addr, recipients, msg.as_string())
+                # sendmail returns a dict of refused recipients; non-empty means
+                # partial delivery failure that would otherwise be silent.
+                refused = server.sendmail(
+                    self._cfg.from_addr, recipients, msg.as_string()
+                )
+            if refused:
+                logger.warning(
+                    "Email to %s partially refused: %s", to, sorted(refused)
+                )
+                return False
             logger.info("Email sent to %s", to)
             return True
         except Exception:

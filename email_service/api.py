@@ -1,6 +1,7 @@
 """HTTP API wrapping email_service for service-to-service email sending."""
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 
@@ -113,10 +114,14 @@ def create_app(
     def verify_key(
         creds: HTTPAuthorizationCredentials | None = Depends(bearer),
     ) -> None:
-        if creds is None or creds.credentials != api_key:
+        if creds is None or not hmac.compare_digest(creds.credentials, api_key):
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
             )
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
 
     @app.post("/send", response_model=SendResult)
     def send_email(

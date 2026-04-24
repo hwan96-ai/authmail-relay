@@ -33,6 +33,8 @@ def _mock_server(mock_smtp_cls):
     """Configure MagicMock to return itself from the SMTP context manager."""
     mock_server = MagicMock()
     mock_server.__enter__.return_value = mock_server
+    # smtplib.SMTP.sendmail returns {} when all recipients accepted.
+    mock_server.sendmail.return_value = {}
     mock_smtp_cls.return_value = mock_server
     return mock_server
 
@@ -141,6 +143,23 @@ class TestSmtpSender:
         assert recipients == ["to@test.com", "bcc@test.com"]
         msg = email.message_from_string(raw)
         assert msg["Bcc"] is None
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_returns_false_on_partial_recipient_refusal(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+        # smtplib.SMTP.sendmail returns {recipient: (code, msg)} for refused recipients.
+        mock_server.sendmail.return_value = {
+            "bad@test.com": (550, b"User unknown"),
+        }
+
+        sender = _make_sender()
+        result = sender.send(
+            "to@test.com", "Sub", "<p>b</p>",
+            cc=["bad@test.com"],
+        )
+
+        assert result is False
+        mock_server.sendmail.assert_called_once()
 
     @patch("email_service.sender.smtplib.SMTP")
     def test_rejects_crlf_in_headers(self, mock_smtp_cls):

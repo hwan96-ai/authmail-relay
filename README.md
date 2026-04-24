@@ -114,6 +114,7 @@ docker compose up -d --build
 - 이미지: `python:3.12-slim` 베이스, uid `10001` 의 non-root `app` 유저로 실행.
 - 컨테이너 내부 `HOST=0.0.0.0`, `PORT=8000` (Dockerfile/compose 에 기본 설정).
 - 호스트 `8000` ↔ 컨테이너 `8000` 포트 매핑 (`docker-compose.yml` 의 `ports:`).
+- `docker-compose.yml` 에 `/health` 헬스체크 포함 — `docker compose ps` 에 `healthy` 상태가 뜨며, 기동 후 약 10 초 이내에 초록색으로 전환된다.
 
 ### 3) 호출
 
@@ -142,13 +143,14 @@ docker compose down                     # 정지 및 컨테이너 제거
 
 ### 엔드포인트
 
-모든 요청은 `Authorization: Bearer $API_KEY` 헤더가 필요하다. 성공 시 `200 {"sent": true}`.
+`POST` 요청은 모두 `Authorization: Bearer $API_KEY` 헤더가 필요하다. 성공 시 `200 {"sent": true}`. `GET /health` 는 인증이 필요 없다.
 
-| 메서드 | 경로 | 요청 body | 설명 |
-|---|---|---|---|
-| `POST` | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 일반 메일 |
-| `POST` | `/send/magic-link` | `to, user_name, token` | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
-| `POST` | `/send/otp` | `to, user_name, code` | OTP 메일 |
+| 메서드 | 경로 | 요청 body | 인증 | 설명 |
+|---|---|---|---|---|
+| `GET` | `/health` | — | 불필요 | 헬스체크. `200 {"status": "ok"}` 반환. 로드밸런서/Docker healthcheck 용 |
+| `POST` | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 필요 | 일반 메일 |
+| `POST` | `/send/magic-link` | `to, user_name, token` | 필요 | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
+| `POST` | `/send/otp` | `to, user_name, code` | 필요 | OTP 메일 |
 
 ### 에러 코드
 
