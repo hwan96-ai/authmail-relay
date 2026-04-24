@@ -162,6 +162,32 @@ class TestSmtpSender:
         mock_server.sendmail.assert_called_once()
 
     @patch("email_service.sender.smtplib.SMTP")
+    def test_date_header_present(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        sender.send("to@test.com", "Sub", "<p>b</p>")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        assert msg["Date"] is not None and msg["Date"] != ""
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_message_id_header_present(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        sender.send("to@test.com", "Sub", "<p>b</p>")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        mid = msg["Message-ID"]
+        # RFC 5322: Message-ID is angle-bracketed like "<...@host>"
+        assert mid is not None
+        assert mid.startswith("<") and mid.endswith(">")
+        assert "@" in mid
+
+    @patch("email_service.sender.smtplib.SMTP")
     def test_rejects_crlf_in_headers(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 

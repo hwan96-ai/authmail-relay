@@ -139,6 +139,49 @@ docker compose down                     # 정지 및 컨테이너 제거
 
 ---
 
+## 로컬 메일 테스트 (Mailpit)
+
+실제 메일을 발송하지 않고 로컬에서 발송 결과를 눈으로 확인하려면 `docker-compose.dev.yml` 을 쓴다. [Mailpit](https://mailpit.axllent.org/) 이 SMTP 서버 + 웹 UI 를 같이 제공한다.
+
+```bash
+# 빌드 & 기동 (email-service + mailpit)
+docker compose -f docker-compose.dev.yml up -d --build
+
+# 헬스체크
+curl http://127.0.0.1:8000/health
+# → {"status":"ok"}
+
+# 메일 발송 (API_KEY 는 dev-secret 으로 하드코딩)
+curl -X POST http://127.0.0.1:8000/send/otp \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
+```
+
+발송된 메일은 Mailpit 웹 UI 에서 확인한다:
+
+- Mailpit UI: http://127.0.0.1:8025
+- Mailpit SMTP: `mailpit:1025` (컨테이너 내부), `127.0.0.1:1025` (호스트)
+
+개발용 compose 의 환경변수는 다음과 같이 기본값이 들어 있어 `.env` 파일이 필요 없다.
+
+| 변수 | 값 | 비고 |
+|---|---|---|
+| `SMTP_HOST` | `mailpit` | |
+| `SMTP_PORT` | `1025` | |
+| `SMTP_USER` / `SMTP_PASSWORD` | 빈 값 | Mailpit 은 SMTP AUTH 가 필요 없다 |
+| `SMTP_USE_TLS` | `false` | |
+| `API_KEY` | `dev-secret` | |
+| `MAGIC_LINK_BASE_URL` | `http://localhost:3000` | |
+
+정지:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+---
+
 ## HTTP API 사용법
 
 ### 엔드포인트
@@ -194,7 +237,58 @@ curl -X POST http://127.0.0.1:8000/send/otp \
   -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
 ```
 
-### Python 클라이언트 (httpx)
+### Python 클라이언트 SDK
+
+`email-service[http]` 로 설치하면 `EmailServiceClient` 를 import 해서 바로 쓸 수 있다. Bearer 헤더 자동 부착, dry-run 헤더 자동 전환, 4xx/5xx 시 예외 발생까지 담당한다.
+
+```python
+from email_service.client import EmailServiceClient
+
+with EmailServiceClient("http://email-service:8000", "secret") as client:
+    client.health()
+    # 일반 메일
+    client.send(
+        to="user@example.com",
+        subject="Hi",
+        html_body="<p>Hello</p>",
+        text_body="Hello",
+        cc=["cc@example.com"],
+        bcc=["bcc@example.com"],
+    )
+    # 매직링크 / OTP
+    client.send_magic_link("user@example.com", "홍길동", "abc123")
+    client.send_otp("user@example.com", "홍길동", "482901")
+```
+
+생성자: `EmailServiceClient(base_url, api_key, timeout=10.0)`. context manager 를 지원하며, 직접 `close()` 를 호출해도 된다. 내부적으로 `httpx.Client` 를 사용하므로 `http` extras 가 필요하다.
+
+### Dry-run
+
+메일을 실제로 발송하지 않고 payload 가 유효한지만 확인하고 싶을 때 `X-Dry-Run` 헤더를 쓴다.
+
+- 헤더 값: `true` / `1` / `yes` (대소문자 무시) 는 dry-run 으로 처리된다.
+- 적용 대상: `/send`, `/send/magic-link`, `/send/otp`
+- 동작: API Key 인증과 Pydantic validation 은 그대로 수행되지만, SMTP 는 호출되지 않는다.
+- 응답: `200 {"sent": false, "dry_run": true, "message": "Email payload is valid"}`
+
+```bash
+curl -X POST http://127.0.0.1:8000/send/otp \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "X-Dry-Run: true" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
+# → {"sent":false,"dry_run":true,"message":"Email payload is valid"}
+```
+
+SDK 에서는 `dry_run=True` 만 넘기면 된다.
+
+```python
+client.send_otp("user@example.com", "홍길동", "482901", dry_run=True)
+```
+
+### 직접 httpx 로 호출
+
+SDK 를 쓰지 않고 raw 로 호출하는 예시.
 
 ```python
 import os, httpx
@@ -211,6 +305,31 @@ resp = client.post("/send/otp", json={
     "code": "482901",
 })
 resp.raise_for_status()   # 401/422/502/503 → 예외
+```
+
+### Node.js (fetch)
+
+언어 무관하게 REST 로 호출 가능. Node 18+ 기본 내장 `fetch` 예시.
+
+```javascript
+const resp = await fetch("http://email-service:8000/send/otp", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${process.env.EMAIL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "user@example.com",
+    user_name: "홍길동",
+    code: "482901",
+  }),
+});
+
+if (!resp.ok) {
+  throw new Error(`email-service failed: ${resp.status}`);
+}
+
+console.log(await resp.json());   // { sent: true }
 ```
 
 ---
@@ -431,12 +550,16 @@ email-service/
 ├── email_service/
 │   ├── __init__.py        # 공개 API re-export (SmtpSender, *Notifier)
 │   ├── __main__.py        # `python -m email_service` 진입점 (uvicorn 기동)
-│   ├── api.py             # FastAPI 앱 (create_app) + Pydantic 모델 + 인증
+│   ├── api.py             # FastAPI 앱 (create_app) + Pydantic 모델 + 인증 + dry-run
+│   ├── client.py          # EmailServiceClient — HTTP SDK (httpx 기반)
 │   ├── sender.py          # SmtpConfig, SmtpSender — SMTP 발송 코어
 │   └── notifiers.py       # Notifier(ABC), MagicLinkNotifier, OTPNotifier, TemplateNotifier
 ├── tests/
 │   ├── test_email_service.py   # sender + notifier 유닛 테스트
-│   └── test_api.py             # HTTP API 통합 테스트
-├── pyproject.toml         # 패키지 메타 + optional extras (dev, http)
+│   ├── test_api.py             # HTTP API 통합 테스트
+│   └── test_client.py          # EmailServiceClient SDK 테스트
+├── docker-compose.yml         # 운영용 compose
+├── docker-compose.dev.yml     # 개발용 compose (Mailpit 포함)
+├── pyproject.toml             # 패키지 메타 + optional extras (dev, http)
 └── README.md
 ```

@@ -5,7 +5,7 @@ import hmac
 import logging
 import os
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
@@ -75,14 +75,30 @@ class SendOTPRequest(BaseModel):
 
 class SendResult(BaseModel):
     sent: bool
+    dry_run: bool | None = None
+    message: str | None = None
+
+
+_DRY_RUN_TRUE = {"true", "1", "yes"}
+
+
+def _is_dry_run(value: str | None) -> bool:
+    return value is not None and value.strip().lower() in _DRY_RUN_TRUE
+
+
+_DRY_RUN_RESULT = SendResult(
+    sent=False, dry_run=True, message="Email payload is valid"
+)
 
 
 def _build_sender_from_env() -> SmtpSender:
+    # SMTP_USER/PASSWORD are optional so that no-auth SMTP servers
+    # (Mailpit, MailHog, ...) can be used via docker-compose.dev.yml.
     return SmtpSender(SmtpConfig(
         host=_required_env("SMTP_HOST"),
         port=int(os.environ.get("SMTP_PORT", "587")),
-        user=_required_env("SMTP_USER"),
-        password=_required_env("SMTP_PASSWORD"),
+        user=os.environ.get("SMTP_USER", ""),
+        password=os.environ.get("SMTP_PASSWORD", ""),
         from_addr=os.environ.get("SMTP_FROM", ""),
         use_tls=os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
     ))
@@ -123,10 +139,18 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/send", response_model=SendResult)
+    @app.post(
+        "/send",
+        response_model=SendResult,
+        response_model_exclude_none=True,
+    )
     def send_email(
-        req: SendEmailRequest, _: None = Depends(verify_key)
+        req: SendEmailRequest,
+        x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
+        _: None = Depends(verify_key),
     ) -> SendResult:
+        if _is_dry_run(x_dry_run):
+            return _DRY_RUN_RESULT
         ok = sender.send(
             to=req.to,
             subject=req.subject,
@@ -139,24 +163,40 @@ def create_app(
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
         return SendResult(sent=True)
 
-    @app.post("/send/magic-link", response_model=SendResult)
+    @app.post(
+        "/send/magic-link",
+        response_model=SendResult,
+        response_model_exclude_none=True,
+    )
     def send_magic_link(
-        req: SendMagicLinkRequest, _: None = Depends(verify_key)
+        req: SendMagicLinkRequest,
+        x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
+        _: None = Depends(verify_key),
     ) -> SendResult:
         if magic_link is None:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Magic link endpoint not configured (set MAGIC_LINK_BASE_URL)",
             )
+        if _is_dry_run(x_dry_run):
+            return _DRY_RUN_RESULT
         ok = magic_link.send(req.to, req.user_name, req.token)
         if not ok:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
         return SendResult(sent=True)
 
-    @app.post("/send/otp", response_model=SendResult)
+    @app.post(
+        "/send/otp",
+        response_model=SendResult,
+        response_model_exclude_none=True,
+    )
     def send_otp(
-        req: SendOTPRequest, _: None = Depends(verify_key)
+        req: SendOTPRequest,
+        x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
+        _: None = Depends(verify_key),
     ) -> SendResult:
+        if _is_dry_run(x_dry_run):
+            return _DRY_RUN_RESULT
         ok = otp.send(req.to, req.user_name, req.code)
         if not ok:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")

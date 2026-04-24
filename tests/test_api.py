@@ -187,6 +187,119 @@ class TestSendEmail:
         assert resp.status_code == 502
 
 
+class TestSendDryRun:
+    def _dry(self):
+        return {**_auth(), "X-Dry-Run": "true"}
+
+    def test_send_dry_run_skips_sender(self):
+        sender = MagicMock()
+        client = TestClient(_app(sender=sender))
+        resp = client.post(
+            "/send",
+            headers=self._dry(),
+            json={"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "sent": False, "dry_run": True, "message": "Email payload is valid"
+        }
+        sender.send.assert_not_called()
+
+    def test_magic_link_dry_run_skips_notifier(self):
+        sender = MagicMock()
+        magic = MagicMock(spec=MagicLinkNotifier)
+        client = TestClient(_app(sender=sender, magic_link=magic))
+        resp = client.post(
+            "/send/magic-link",
+            headers=self._dry(),
+            json={"to": "u@t.com", "user_name": "Kim", "token": "tok"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True
+        magic.send.assert_not_called()
+
+    def test_otp_dry_run_skips_notifier(self):
+        otp = MagicMock(spec=OTPNotifier)
+        client = TestClient(_app(otp=otp))
+        resp = client.post(
+            "/send/otp",
+            headers=self._dry(),
+            json={"to": "u@t.com", "user_name": "Kim", "code": "123456"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True
+        otp.send.assert_not_called()
+
+    def test_dry_run_still_requires_api_key(self):
+        sender = MagicMock()
+        client = TestClient(_app(sender=sender))
+        resp = client.post(
+            "/send",
+            headers={"X-Dry-Run": "true"},
+            json={"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"},
+        )
+
+        assert resp.status_code == 401
+        sender.send.assert_not_called()
+
+    def test_dry_run_still_runs_validation(self):
+        sender = MagicMock()
+        client = TestClient(_app(sender=sender))
+        resp = client.post(
+            "/send",
+            headers=self._dry(),
+            json={
+                "to": "u@t.com\r\nBcc: evil@t.com",
+                "subject": "s",
+                "html_body": "<p>x</p>",
+            },
+        )
+
+        assert resp.status_code == 422
+        sender.send.assert_not_called()
+
+    def test_dry_run_accepts_1_and_yes(self):
+        sender = MagicMock()
+        client = TestClient(_app(sender=sender))
+        for value in ("1", "yes", "TRUE", "Yes"):
+            resp = client.post(
+                "/send",
+                headers={**_auth(), "X-Dry-Run": value},
+                json={"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"},
+            )
+            assert resp.status_code == 200, value
+            assert resp.json()["dry_run"] is True, value
+        sender.send.assert_not_called()
+
+    def test_non_dry_run_still_returns_sent_only(self):
+        # Back-compat: non-dry-run path must keep the {"sent": true} shape.
+        sender = MagicMock()
+        sender.send.return_value = True
+        client = TestClient(_app(sender=sender))
+        resp = client.post(
+            "/send",
+            headers=_auth(),
+            json={"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"sent": True}
+
+    def test_magic_link_not_configured_beats_dry_run(self):
+        # 503 for misconfigured service should still apply even under dry-run.
+        client = TestClient(_app(magic_link=None))
+        resp = client.post(
+            "/send/magic-link",
+            headers=self._dry(),
+            json={"to": "u@t.com", "user_name": "Kim", "token": "tok"},
+        )
+
+        assert resp.status_code == 503
+
+
 class TestSendMagicLink:
     def test_success(self):
         sender = MagicMock()

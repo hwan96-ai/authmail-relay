@@ -4,6 +4,7 @@ import smtplib
 from dataclasses import dataclass
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ class SmtpSender:
         msg["Subject"] = subject
         msg["From"] = self._cfg.from_addr
         msg["To"] = to
+        msg["Date"] = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid()
         if cc:
             msg["Cc"] = ", ".join(cc)
 
