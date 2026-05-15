@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "email-service"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reusable SMTP email service with pluggable notifiers (magic-link, OTP)"
 requires-python = ">=3.10"
 dependencies = []
