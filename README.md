@@ -17,6 +17,15 @@
 
 ---
 
+## 보안 모델 / Security Model
+
+- **매직링크 토큰 엔트로피는 호출자 책임이다.** 본 패키지는 `MagicLinkNotifier` 로 전달된 `token` 문자열을 그대로 URL 쿼리에 인코딩만 할 뿐, 생성·검증·저장하지 않는다. 호출자는 최소 `secrets.token_urlsafe(32)` 수준의 엔트로피로 토큰을 생성하고, 만료·1회용 사용 등 라이프사이클을 별도로 관리해야 한다.
+- **`API_KEY` 는 공유 비밀** 이며 `Authorization: Bearer` 헤더로 전달된다. `openssl rand -hex 32` 등으로 충분히 길고 무작위인 값을 사용하고, 절대 저장소에 커밋하지 않는다.
+- **CRLF 헤더 인젝션** 은 sender 단계와 Pydantic 단계 모두에서 차단된다. `SMTP_FROM` 도 부팅 시 검증된다.
+- **STARTTLS** 가 서버에서 광고되지 않는 경우 `use_tls=True` 발송은 명시적으로 실패한다 (다운그레이드 / STRIPTLS 방어).
+
+---
+
 ## 주요 기능
 
 - **HTML + plain-text multipart 발송** — `text_body` 를 넘기면 HTML 미지원 클라이언트를 위한 대체본이 함께 첨부된다.

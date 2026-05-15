@@ -288,8 +288,10 @@ class TestSendDryRun:
         assert resp.status_code == 200
         assert resp.json() == {"sent": True}
 
-    def test_magic_link_not_configured_beats_dry_run(self):
-        # 503 for misconfigured service should still apply even under dry-run.
+    def test_magic_link_dry_run_succeeds_when_not_configured(self):
+        # Phase 1: dry-run validates payload even when MAGIC_LINK_BASE_URL is
+        # unset. This lets callers exercise the endpoint contract in CI without
+        # needing a real magic-link base URL configured.
         client = TestClient(_app(magic_link=None))
         resp = client.post(
             "/send/magic-link",
@@ -297,7 +299,8 @@ class TestSendDryRun:
             json={"to": "u@t.com", "user_name": "Kim", "token": "tok"},
         )
 
-        assert resp.status_code == 503
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True
 
 
 class TestSendMagicLink:
@@ -382,4 +385,24 @@ class TestStartupValidation:
         monkeypatch.delenv("API_KEY", raising=False)
 
         with pytest.raises(RuntimeError, match="API_KEY"):
+            create_app()
+
+    def test_crlf_in_smtp_from_raises_at_boot(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+        monkeypatch.setenv("SMTP_USER", "u@t.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "pw")
+        monkeypatch.setenv("API_KEY", "k")
+        monkeypatch.setenv("SMTP_FROM", "foo@t.com\r\nBcc: evil@x")
+
+        with pytest.raises(RuntimeError, match="SMTP_FROM"):
+            create_app()
+
+    def test_crlf_lf_only_in_smtp_from_raises_at_boot(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+        monkeypatch.setenv("SMTP_USER", "u@t.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "pw")
+        monkeypatch.setenv("API_KEY", "k")
+        monkeypatch.setenv("SMTP_FROM", "foo@t.com\nBcc: evil@x")
+
+        with pytest.raises(RuntimeError, match="SMTP_FROM"):
             create_app()

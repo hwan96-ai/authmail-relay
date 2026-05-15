@@ -1,6 +1,7 @@
 """email-service unit tests."""
 import base64
 import email
+import ssl
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -186,6 +187,33 @@ class TestSmtpSender:
         assert mid is not None
         assert mid.startswith("<") and mid.endswith(">")
         assert "@" in mid
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_starttls_uses_ssl_default_context(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+        mock_server.has_extn.return_value = True
+
+        sender = _make_sender()
+        assert sender.send("to@test.com", "Sub", "<p>b</p>") is True
+
+        mock_server.starttls.assert_called_once()
+        kwargs = mock_server.starttls.call_args.kwargs
+        assert "context" in kwargs
+        assert isinstance(kwargs["context"], ssl.SSLContext)
+        mock_server.sendmail.assert_called_once()
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_aborts_when_starttls_not_advertised(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+        mock_server.has_extn.return_value = False
+
+        sender = _make_sender()
+        result = sender.send("to@test.com", "Sub", "<p>b</p>")
+
+        assert result is False
+        mock_server.starttls.assert_not_called()
+        mock_server.login.assert_not_called()
+        mock_server.sendmail.assert_not_called()
 
     @patch("email_service.sender.smtplib.SMTP")
     def test_rejects_crlf_in_headers(self, mock_smtp_cls):

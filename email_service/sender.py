@@ -1,6 +1,7 @@
 """SMTP email sender — no project-specific dependencies."""
 import logging
 import smtplib
+import ssl
 from dataclasses import dataclass
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -66,7 +67,17 @@ class SmtpSender:
             with smtplib.SMTP(self._cfg.host, self._cfg.port,
                               timeout=self._cfg.timeout) as server:
                 if self._cfg.use_tls:
-                    server.starttls()
+                    # Guard against a downgrade / STRIPTLS scenario: only call
+                    # starttls() when the server advertises it. Otherwise we
+                    # would silently send credentials over plaintext.
+                    if not server.has_extn("starttls"):
+                        logger.warning(
+                            "SMTP server %s does not advertise STARTTLS; "
+                            "refusing to send email to %s",
+                            self._cfg.host, to,
+                        )
+                        return False
+                    server.starttls(context=ssl.create_default_context())
                 if self._cfg.user and self._cfg.password:
                     server.login(self._cfg.user, self._cfg.password)
                 # sendmail returns a dict of refused recipients; non-empty means

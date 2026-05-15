@@ -94,12 +94,21 @@ _DRY_RUN_RESULT = SendResult(
 def _build_sender_from_env() -> SmtpSender:
     # SMTP_USER/PASSWORD are optional so that no-auth SMTP servers
     # (Mailpit, MailHog, ...) can be used via docker-compose.dev.yml.
+    from_addr = os.environ.get("SMTP_FROM", "")
+    if from_addr:
+        try:
+            _no_crlf(from_addr)
+        except ValueError as exc:
+            raise RuntimeError(
+                "SMTP_FROM contains CRLF characters and would enable header "
+                "injection"
+            ) from exc
     return SmtpSender(SmtpConfig(
         host=_required_env("SMTP_HOST"),
         port=int(os.environ.get("SMTP_PORT", "587")),
         user=os.environ.get("SMTP_USER", ""),
         password=os.environ.get("SMTP_PASSWORD", ""),
-        from_addr=os.environ.get("SMTP_FROM", ""),
+        from_addr=from_addr,
         use_tls=os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
     ))
 
@@ -173,13 +182,15 @@ def create_app(
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
     ) -> SendResult:
+        # Dry-run must succeed before the configuration check so that callers
+        # can validate payloads even when MAGIC_LINK_BASE_URL is unset.
+        if _is_dry_run(x_dry_run):
+            return _DRY_RUN_RESULT
         if magic_link is None:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Magic link endpoint not configured (set MAGIC_LINK_BASE_URL)",
             )
-        if _is_dry_run(x_dry_run):
-            return _DRY_RUN_RESULT
         ok = magic_link.send(req.to, req.user_name, req.token)
         if not ok:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
