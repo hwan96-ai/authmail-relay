@@ -12,6 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from email_service import api as api_module
 from email_service.api import create_app
 from email_service.notifiers import MagicLinkNotifier, OTPNotifier
+from email_service.sender import SendResult
+
+
+def _ok(message_id: str = "<test@host>") -> SendResult:
+    return SendResult(sent=True, message_id=message_id)
+
+
+def _fail(error_code: str = "smtp_connection",
+          error_message: str = "boom") -> SendResult:
+    return SendResult(sent=False, error_code=error_code, error_message=error_message)
 
 
 API_KEY = "test-key"
@@ -27,6 +37,20 @@ def _app(sender=None, magic_link=None, otp=None):
 
 def _auth():
     return {"Authorization": f"Bearer {API_KEY}"}
+
+
+class TestOpenAPIMetadata:
+    def test_every_path_has_summary_and_tags(self):
+        client = TestClient(_app())
+        spec = client.get("/openapi.json").json()
+        assert spec["info"]["version"] == "0.2.0"
+        assert "description" in spec["info"]
+        assert spec["info"].get("contact", {}).get("name") == "email-service"
+
+        for path, methods in spec["paths"].items():
+            for method, op in methods.items():
+                assert "summary" in op, f"{method.upper()} {path} missing summary"
+                assert op.get("tags"), f"{method.upper()} {path} missing tags"
 
 
 class TestHealth:
@@ -47,7 +71,7 @@ class TestHealth:
 class TestSendEmail:
     def test_success(self):
         sender = MagicMock()
-        sender.send.return_value = True
+        sender.send.return_value = _ok()
 
         client = TestClient(_app(sender=sender))
         resp = client.post(
@@ -61,12 +85,12 @@ class TestSendEmail:
         )
 
         assert resp.status_code == 200
-        assert resp.json() == {"sent": True}
+        assert resp.json() == {"sent": True, "message_id": "<test@host>"}
         sender.send.assert_called_once()
 
     def test_forwards_optional_fields(self):
         sender = MagicMock()
-        sender.send.return_value = True
+        sender.send.return_value = _ok()
 
         client = TestClient(_app(sender=sender))
         resp = client.post(
@@ -175,7 +199,7 @@ class TestSendEmail:
 
     def test_smtp_failure_returns_502(self):
         sender = MagicMock()
-        sender.send.return_value = False
+        sender.send.return_value = _fail()
 
         client = TestClient(_app(sender=sender))
         resp = client.post(
@@ -185,6 +209,26 @@ class TestSendEmail:
         )
 
         assert resp.status_code == 502
+
+    def test_smtp_failure_body_contains_error_code(self):
+        sender = MagicMock()
+        sender.send.return_value = _fail(
+            error_code="smtp_auth_failed", error_message="535 bad creds"
+        )
+
+        client = TestClient(_app(sender=sender))
+        resp = client.post(
+            "/send",
+            headers=_auth(),
+            json={"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"},
+        )
+
+        assert resp.status_code == 502
+        body = resp.json()
+        # FastAPI wraps HTTPException(detail=...) under "detail" key.
+        detail = body.get("detail", body)
+        assert detail["error_code"] == "smtp_auth_failed"
+        assert "535" in detail["message"]
 
 
 class TestSendDryRun:
@@ -277,7 +321,7 @@ class TestSendDryRun:
     def test_non_dry_run_still_returns_sent_only(self):
         # Back-compat: non-dry-run path must keep the {"sent": true} shape.
         sender = MagicMock()
-        sender.send.return_value = True
+        sender.send.return_value = _ok()
         client = TestClient(_app(sender=sender))
         resp = client.post(
             "/send",
@@ -286,10 +330,12 @@ class TestSendDryRun:
         )
 
         assert resp.status_code == 200
-        assert resp.json() == {"sent": True}
+        assert resp.json() == {"sent": True, "message_id": "<test@host>"}
 
-    def test_magic_link_not_configured_beats_dry_run(self):
-        # 503 for misconfigured service should still apply even under dry-run.
+    def test_magic_link_dry_run_succeeds_when_not_configured(self):
+        # Phase 1: dry-run validates payload even when MAGIC_LINK_BASE_URL is
+        # unset. This lets callers exercise the endpoint contract in CI without
+        # needing a real magic-link base URL configured.
         client = TestClient(_app(magic_link=None))
         resp = client.post(
             "/send/magic-link",
@@ -297,14 +343,15 @@ class TestSendDryRun:
             json={"to": "u@t.com", "user_name": "Kim", "token": "tok"},
         )
 
-        assert resp.status_code == 503
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True
 
 
 class TestSendMagicLink:
     def test_success(self):
         sender = MagicMock()
         magic = MagicMock(spec=MagicLinkNotifier)
-        magic.send.return_value = True
+        magic.send.return_value = _ok()
 
         client = TestClient(_app(sender=sender, magic_link=magic))
         resp = client.post(
@@ -341,7 +388,7 @@ class TestSendMagicLink:
 class TestSendOTP:
     def test_success(self):
         otp = MagicMock(spec=OTPNotifier)
-        otp.send.return_value = True
+        otp.send.return_value = _ok()
 
         client = TestClient(_app(otp=otp))
         resp = client.post(
@@ -355,7 +402,7 @@ class TestSendOTP:
 
     def test_failure_returns_502(self):
         otp = MagicMock(spec=OTPNotifier)
-        otp.send.return_value = False
+        otp.send.return_value = _fail()
 
         client = TestClient(_app(otp=otp))
         resp = client.post(
@@ -382,4 +429,24 @@ class TestStartupValidation:
         monkeypatch.delenv("API_KEY", raising=False)
 
         with pytest.raises(RuntimeError, match="API_KEY"):
+            create_app()
+
+    def test_crlf_in_smtp_from_raises_at_boot(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+        monkeypatch.setenv("SMTP_USER", "u@t.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "pw")
+        monkeypatch.setenv("API_KEY", "k")
+        monkeypatch.setenv("SMTP_FROM", "foo@t.com\r\nBcc: evil@x")
+
+        with pytest.raises(RuntimeError, match="SMTP_FROM"):
+            create_app()
+
+    def test_crlf_lf_only_in_smtp_from_raises_at_boot(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+        monkeypatch.setenv("SMTP_USER", "u@t.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "pw")
+        monkeypatch.setenv("API_KEY", "k")
+        monkeypatch.setenv("SMTP_FROM", "foo@t.com\nBcc: evil@x")
+
+        with pytest.raises(RuntimeError, match="SMTP_FROM"):
             create_app()

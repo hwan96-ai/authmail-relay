@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.client import EmailServiceClient
+from email_service.client import EmailServiceClient, EmailServiceError
 
 
 def _handler(responses):
@@ -95,8 +95,27 @@ class TestSend:
             with pytest.raises(httpx.HTTPStatusError):
                 c.send("u@t.com", "s", "<p>x</p>")
 
-    def test_5xx_raises(self):
-        h, _ = _handler({("POST", "/send"): (502, {"detail": "smtp down"})})
+    def test_502_raises_email_service_error_with_code(self):
+        h, _ = _handler(
+            {
+                ("POST", "/send"): (
+                    502,
+                    {"detail": {"error_code": "smtp_auth_failed",
+                                "message": "535 bad creds"}},
+                )
+            }
+        )
+        with _client(h) as c:
+            with pytest.raises(EmailServiceError) as excinfo:
+                c.send("u@t.com", "s", "<p>x</p>")
+        err = excinfo.value
+        assert err.error_code == "smtp_auth_failed"
+        assert err.status_code == 502
+        assert "535" in (err.message or "")
+
+    def test_500_still_raises_generic_httpx(self):
+        # Non-502 5xx keep the generic raise_for_status semantics.
+        h, _ = _handler({("POST", "/send"): (500, {"detail": "boom"})})
         with _client(h) as c:
             with pytest.raises(httpx.HTTPStatusError):
                 c.send("u@t.com", "s", "<p>x</p>")

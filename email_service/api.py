@@ -4,13 +4,26 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import uuid
+from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
+from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
+from email_service import metrics as metrics_module
 from email_service.notifiers import MagicLinkNotifier, OTPNotifier
 from email_service.sender import SmtpConfig, SmtpSender
+from email_service.webhooks import deliver_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +48,8 @@ class SendEmailRequest(BaseModel):
     text_body: str | None = None
     cc: list[str] | None = None
     bcc: list[str] | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
     @field_validator("to", "subject")
     @classmethod
@@ -55,6 +70,8 @@ class SendMagicLinkRequest(BaseModel):
     to: str = Field(min_length=1)
     user_name: str = Field(min_length=1)
     token: str = Field(min_length=1)
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
     @field_validator("to")
     @classmethod
@@ -66,6 +83,8 @@ class SendOTPRequest(BaseModel):
     to: str = Field(min_length=1)
     user_name: str = Field(min_length=1)
     code: str = Field(min_length=1)
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
     @field_validator("to")
     @classmethod
@@ -77,6 +96,17 @@ class SendResult(BaseModel):
     sent: bool
     dry_run: bool | None = None
     message: str | None = None
+    message_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    refused: list[str] | None = None
+    status: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    """Body of 502 responses when SMTP delivery fails."""
+    error_code: str
+    message: str | None = None
 
 
 _DRY_RUN_TRUE = {"true", "1", "yes"}
@@ -84,6 +114,10 @@ _DRY_RUN_TRUE = {"true", "1", "yes"}
 
 def _is_dry_run(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _DRY_RUN_TRUE
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in _DRY_RUN_TRUE
 
 
 _DRY_RUN_RESULT = SendResult(
@@ -94,12 +128,21 @@ _DRY_RUN_RESULT = SendResult(
 def _build_sender_from_env() -> SmtpSender:
     # SMTP_USER/PASSWORD are optional so that no-auth SMTP servers
     # (Mailpit, MailHog, ...) can be used via docker-compose.dev.yml.
+    from_addr = os.environ.get("SMTP_FROM", "")
+    if from_addr:
+        try:
+            _no_crlf(from_addr)
+        except ValueError as exc:
+            raise RuntimeError(
+                "SMTP_FROM contains CRLF characters and would enable header "
+                "injection"
+            ) from exc
     return SmtpSender(SmtpConfig(
         host=_required_env("SMTP_HOST"),
         port=int(os.environ.get("SMTP_PORT", "587")),
         user=os.environ.get("SMTP_USER", ""),
         password=os.environ.get("SMTP_PASSWORD", ""),
-        from_addr=os.environ.get("SMTP_FROM", ""),
+        from_addr=from_addr,
         use_tls=os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
     ))
 
@@ -124,8 +167,63 @@ def create_app(
     if otp is None:
         otp = OTPNotifier(sender)
 
-    app = FastAPI(title="email-service")
+    app = FastAPI(
+        title="email-service",
+        version="0.2.0",
+        description=(
+            "SMTP-based HTML email service with magic-link and OTP notifiers. "
+            "All write endpoints require Bearer authentication and support "
+            "`X-Dry-Run: true` for payload validation without sending. "
+            "Async delivery is available by including a `webhook_url` in the "
+            "request body."
+        ),
+        contact={
+            "name": "email-service",
+            "url": "https://github.com/hwan96-ai/email-service",
+        },
+        openapi_tags=[
+            {"name": "Email", "description": "Email send endpoints."},
+            {"name": "Health", "description": "Liveness / readiness probes."},
+            {"name": "Metrics", "description": "Prometheus metrics endpoint."},
+        ],
+    )
     bearer = HTTPBearer(auto_error=False)
+
+    @app.middleware("http")
+    async def trace_id_middleware(request: Request, call_next):
+        tid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        # Make trace id available to route handlers via request.state.
+        request.state.request_id = tid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = tid
+        return response
+
+    def _metrics_auth(request: Request) -> None:
+        if not _truthy(os.environ.get("METRICS_REQUIRE_AUTH")):
+            return
+        auth = request.headers.get("authorization", "")
+        token = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+        if not token or not hmac.compare_digest(token, api_key):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
+            )
+
+    @app.get(
+        "/metrics",
+        summary="Prometheus metrics",
+        tags=["Metrics"],
+        description=(
+            "Prometheus exposition format. Returns 404 when prometheus-client "
+            "is not installed. Optionally protected by `METRICS_REQUIRE_AUTH=true`."
+        ),
+        response_description="Plain-text Prometheus exposition.",
+    )
+    def metrics(request: Request) -> Response:
+        if not metrics_module.metrics_available():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "metrics disabled")
+        _metrics_auth(request)
+        body, content_type = metrics_module.render_latest()
+        return Response(content=body, media_type=content_type)
 
     def verify_key(
         creds: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -135,71 +233,211 @@ def create_app(
                 status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
             )
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        summary="Health check",
+        tags=["Health"],
+        description="Liveness probe. Always returns `{\"status\": \"ok\"}` when the process is running.",
+        response_description="Always `{\"status\": \"ok\"}`.",
+    )
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    _failure_responses = {
+        401: {"description": "Invalid or missing API key"},
+        502: {"model": ErrorResponse, "description": "Email send failed"},
+    }
+
+    def _fail(result) -> None:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": result.error_code,
+                "message": result.error_message,
+            },
+        )
+
+    def _result_to_payload(result, message_id: str | None) -> dict:
+        return {
+            "message_id": message_id or result.message_id,
+            "status": getattr(result, "status", None)
+                or ("delivered" if result.sent else "failed"),
+            "error_code": result.error_code,
+            "refused": list(result.refused) if result.refused else [],
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "attempts": getattr(result, "attempts", 1),
+        }
+
+    def _run_and_notify(send_fn, webhook_url: str, webhook_secret: str | None):
+        """Background task: invoke ``send_fn``, then POST result to webhook."""
+        try:
+            result = send_fn()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Background send raised")
+            payload = {
+                "message_id": None,
+                "status": "failed",
+                "error_code": "unknown",
+                "refused": [],
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "attempts": 1,
+                "error_message": str(exc),
+            }
+            deliver_webhook(webhook_url, payload, webhook_secret)
+            return
+        payload = _result_to_payload(result, getattr(result, "message_id", None))
+        deliver_webhook(webhook_url, payload, webhook_secret)
 
     @app.post(
         "/send",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
+        summary="Send raw HTML email",
+        tags=["Email"],
+        description=(
+            "Send an arbitrary HTML email. Use `X-Dry-Run: true` to validate "
+            "the payload without contacting SMTP. Include `webhook_url` in the "
+            "body to deliver asynchronously and receive the result by webhook."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_email(
         req: SendEmailRequest,
+        request: Request,
+        background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
-        ok = sender.send(
+        rid = getattr(request.state, "request_id", None)
+        if req.webhook_url:
+            def _do_send():
+                return sender.send(
+                    to=req.to,
+                    subject=req.subject,
+                    html_body=req.html_body,
+                    text_body=req.text_body,
+                    cc=req.cc,
+                    bcc=req.bcc,
+                    request_id=rid,
+                )
+            background_tasks.add_task(
+                _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
+            )
+            return SendResult(
+                sent=False, status="accepted", message=(
+                    "Send queued; final result will be delivered via webhook"
+                ),
+            )
+        result = sender.send(
             to=req.to,
             subject=req.subject,
             html_body=req.html_body,
             text_body=req.text_body,
             cc=req.cc,
             bcc=req.bcc,
+            request_id=rid,
         )
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        if not result.sent:
+            _fail(result)
+        status_val = getattr(result, "status", None)
+        return SendResult(
+            sent=True,
+            message_id=result.message_id,
+            # Only surface status when it differs from default to preserve
+            # backward-compatible response shape.
+            status=status_val if status_val and status_val != "delivered" else None,
+        )
 
     @app.post(
         "/send/magic-link",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
+        summary="Send password-setup magic link",
+        tags=["Email"],
+        description=(
+            "Send a password-setup magic link to the user. Requires "
+            "`MAGIC_LINK_BASE_URL` to be configured at startup. The token is "
+            "URL-encoded automatically."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_magic_link(
         req: SendMagicLinkRequest,
+        background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
     ) -> SendResult:
+        # Dry-run must succeed before the configuration check so that callers
+        # can validate payloads even when MAGIC_LINK_BASE_URL is unset.
+        if _is_dry_run(x_dry_run):
+            return _DRY_RUN_RESULT
         if magic_link is None:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Magic link endpoint not configured (set MAGIC_LINK_BASE_URL)",
             )
-        if _is_dry_run(x_dry_run):
-            return _DRY_RUN_RESULT
-        ok = magic_link.send(req.to, req.user_name, req.token)
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        if req.webhook_url:
+            def _do_send():
+                return magic_link.send(req.to, req.user_name, req.token)
+            background_tasks.add_task(
+                _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
+            )
+            return SendResult(sent=False, status="accepted")
+        result = magic_link.send(req.to, req.user_name, req.token)
+        if not result.sent:
+            _fail(result)
+        status_val = getattr(result, "status", None)
+        return SendResult(
+            sent=True,
+            message_id=result.message_id,
+            # Only surface status when it differs from default to preserve
+            # backward-compatible response shape.
+            status=status_val if status_val and status_val != "delivered" else None,
+        )
 
     @app.post(
         "/send/otp",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
+        summary="Send one-time password (OTP)",
+        tags=["Email"],
+        description=(
+            "Send a one-time password code via email. The `code` field is "
+            "rendered verbatim into the email body — generate it on the caller "
+            "side."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_otp(
         req: SendOTPRequest,
+        background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
-        ok = otp.send(req.to, req.user_name, req.code)
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        if req.webhook_url:
+            def _do_send():
+                return otp.send(req.to, req.user_name, req.code)
+            background_tasks.add_task(
+                _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
+            )
+            return SendResult(sent=False, status="accepted")
+        result = otp.send(req.to, req.user_name, req.code)
+        if not result.sent:
+            _fail(result)
+        status_val = getattr(result, "status", None)
+        return SendResult(
+            sent=True,
+            message_id=result.message_id,
+            # Only surface status when it differs from default to preserve
+            # backward-compatible response shape.
+            status=status_val if status_val and status_val != "delivered" else None,
+        )
 
     return app

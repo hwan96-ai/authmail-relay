@@ -17,6 +17,15 @@
 
 ---
 
+## 보안 모델 / Security Model
+
+- **매직링크 토큰 엔트로피는 호출자 책임이다.** 본 패키지는 `MagicLinkNotifier` 로 전달된 `token` 문자열을 그대로 URL 쿼리에 인코딩만 할 뿐, 생성·검증·저장하지 않는다. 호출자는 최소 `secrets.token_urlsafe(32)` 수준의 엔트로피로 토큰을 생성하고, 만료·1회용 사용 등 라이프사이클을 별도로 관리해야 한다.
+- **`API_KEY` 는 공유 비밀** 이며 `Authorization: Bearer` 헤더로 전달된다. `openssl rand -hex 32` 등으로 충분히 길고 무작위인 값을 사용하고, 절대 저장소에 커밋하지 않는다.
+- **CRLF 헤더 인젝션** 은 sender 단계와 Pydantic 단계 모두에서 차단된다. `SMTP_FROM` 도 부팅 시 검증된다.
+- **STARTTLS** 가 서버에서 광고되지 않는 경우 `use_tls=True` 발송은 명시적으로 실패한다 (다운그레이드 / STRIPTLS 방어).
+
+---
+
 ## 주요 기능
 
 - **HTML + plain-text multipart 발송** — `text_body` 를 넘기면 HTML 미지원 클라이언트를 위한 대체본이 함께 첨부된다.
@@ -30,24 +39,197 @@
 
 ---
 
+## Operations
+
+운영 환경에서 발송 성공률·실패 사유·지연을 관측하기 위한 옵트인 기능들이다. 모두 환경변수로 켤 수 있으며, 기본값은 모두 off — 기존 동작과 100% 호환된다.
+
+### Prometheus 메트릭 (`/metrics`)
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `METRICS_ENABLED` | `false` | `true` 일 때 `GET /metrics` 활성화. `prometheus-client` 설치 필요. |
+| `METRICS_REQUIRE_AUTH` | `false` | `true` 일 때 `/metrics` 호출에도 `Authorization: Bearer $API_KEY` 강제. |
+
+활성화:
+
+```bash
+pip install "email-service[http]"   # prometheus-client 포함
+METRICS_ENABLED=true python -m email_service
+curl http://127.0.0.1:8000/metrics
+```
+
+노출되는 시리즈:
+
+- `email_send_total{result, error_code}` — Counter. `result` 는 `success` / `failure`, `error_code` 는 `crlf_in_header` / `smtp_auth_failed` / `smtp_connection` / `smtp_timeout` / `smtp_transient` / `recipient_refused` / `starttls_unsupported` / `unknown` (`success` 시 빈 문자열).
+- `email_send_duration_seconds` — Histogram. SMTP 호출 한 건의 종단 지연 (초).
+- `email_send_active` — Gauge. 현재 처리 중인 발송 건수.
+- `email_retry_attempts_total{reason}` — Counter. 재시도 시도 횟수 (Phase 4 `max_retries > 0` 일 때).
+- `email_webhook_failed_total` — Counter. webhook 콜백 전달이 최종 실패한 건수.
+
+샘플 출력:
+
+```
+# HELP email_send_total Total email send attempts
+# TYPE email_send_total counter
+email_send_total{result="success",error_code=""} 42.0
+email_send_total{result="failure",error_code="smtp_connection"} 3.0
+email_send_duration_seconds_bucket{le="0.5"} 41.0
+```
+
+권장 알람 (Prometheus):
+
+```yaml
+- alert: EmailFailureRateHigh
+  expr: rate(email_send_total{result="failure"}[5m]) > 0.05
+  for: 10m
+  annotations:
+    summary: "email-service failure rate above 5% for 10 minutes"
+```
+
+### 구조화 로그 (JSON)
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `EMAIL_SERVICE_LOG_FORMAT` | `text` | `json` 일 때 `python-json-logger` 로 JSON 한 줄 로그 출력. |
+| `EMAIL_SERVICE_DEBUG` | `0` | `1` 일 때 `smtplib.set_debuglevel(1)` 활성화 (개발 전용). |
+
+PII 안전성: 수신자 이메일 주소는 절대 평문으로 로그에 남지 않는다. 모든 발송 로그는 SHA-256 해시 앞 8자(`to_hash`) 로 표기되며, `error_code`·`duration_ms`·`message_id`·`request_id` 가 함께 기록된다.
+
+> ⚠️ **보안 주의**: `EMAIL_SERVICE_DEBUG=1` 은 `smtplib` 의 디버그 출력을 stderr 로 보내며, 여기에는 `AUTH PLAIN <base64>` 라인이 포함된다 (즉, 비밀번호가 base64 로 노출). 절대 운영 환경에서는 켜지 말 것. 표준 라이브러리 한계상 이 라인을 안전하게 마스킹할 수 없다.
+
+### 분산 트레이싱 (`X-Request-ID`)
+
+모든 요청은 `X-Request-ID` 헤더를 echo 하며, 헤더가 없으면 UUID 가 자동 발급된다. 이 ID 는 SMTP 발송 로그까지 그대로 전파되어, 게이트웨이 → email-service → SMTP 의 풀 트레이스를 단일 ID 로 grep 할 수 있다.
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" \
+     -H "X-Request-ID: trace-abc-123" \
+     -X POST http://127.0.0.1:8000/send \
+     -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>"}'
+# Response includes: X-Request-ID: trace-abc-123
+```
+
+### SMTP 재시도 (`max_retries`)
+
+라이브러리 모드에서만 사용. 기본값 `0` 으로 기존 동작과 호환된다.
+
+```python
+from email_service import SmtpSender, SmtpConfig
+
+sender = SmtpSender(
+    SmtpConfig(host="smtp.gmail.com", port=587, user="u", password="p"),
+    max_retries=2,                  # 1 회 시도 + 2 회 재시도 = 최대 3 회
+    backoff_seconds=(1, 5, 25),     # 지수 백오프; 마지막 값으로 클램프
+)
+```
+
+재시도 대상: `SMTPServerDisconnected`, `SMTPConnectError`, `socket.timeout`, SMTP 4xx 응답. 5xx 영구 실패와 부분 거부(partial refusal) 는 즉시 반환되어 같은 수신자에게 중복 발송되지 않는다. `Message-ID` 는 재시도 전체에서 동일하게 유지된다 (MTA dedup).
+
+각 재시도는 `email_retry_attempts_total{reason}` 카운터를 증가시킨다.
+
+### Test mode — .eml 캡처 (`EMAIL_TEST_CAPTURE_DIR`)
+
+환경변수 `EMAIL_TEST_CAPTURE_DIR` 가 set 되면 SMTP 호출을 건너뛰고 메시지를 `<message_id>.eml` 파일로 디렉토리에 저장한다. 통합 테스트에서 SMTP 없이 메일 내용을 검증할 때 사용.
+
+```bash
+EMAIL_TEST_CAPTURE_DIR=/tmp/outbox pytest tests/
+```
+
+전체 예시는 [examples/integration_test_with_capture.py](examples/integration_test_with_capture.py) 참고.
+
+`dry_run` (HTTP `X-Dry-Run: true`) 과 다름: dry-run 은 페이로드 검증 only (메시지 빌드 안 함), capture mode 는 실제 MIME 메시지를 생성하여 디스크에 저장 (헤더·바디 검증 가능).
+
+### Webhook 콜백 (비동기 발송 통지)
+
+`webhook_url` 을 `POST /send` (또는 `/send/magic-link`, `/send/otp`) 의 body 에 포함하면 발송이 백그라운드로 처리되고 응답은 즉시 `{"sent": false, "status": "accepted"}` 로 반환된다. 최종 결과는 다음 페이로드로 webhook URL 에 POST 된다:
+
+```json
+{
+  "message_id": "<...@host>",
+  "status": "delivered",
+  "error_code": null,
+  "refused": [],
+  "sent_at": "2026-05-15T10:00:00+00:00",
+  "attempts": 1
+}
+```
+
+`webhook_secret` 도 함께 보내면 body 전체에 대한 HMAC-SHA256 서명이 `X-Email-Service-Signature: sha256=<hex>` 헤더로 포함된다.
+
+수신자 측 검증 (Python):
+
+```python
+import hmac, hashlib
+sig = request.headers["X-Email-Service-Signature"]
+expected = "sha256=" + hmac.new(SECRET.encode(), request.body, hashlib.sha256).hexdigest()
+assert hmac.compare_digest(sig, expected)
+```
+
+Webhook 전달 자체는 `(1s, 10s, 60s)` 백오프로 최대 3 회 재시도된다. 최종 실패 시 `email_webhook_failed_total` 메트릭이 증가하며 발송 자체에는 영향을 주지 않는다 (이미 발송 완료).
+
+#### 로컬 webhook 테스트
+
+`docker-compose.dev.yml` 에 포함된 `webhook-sink` (httpbin) 서비스로 페이로드를 즉시 확인할 수 있다:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+curl -H "Authorization: Bearer $API_KEY" \
+     -X POST http://127.0.0.1:8000/send \
+     -H "Content-Type: application/json" \
+     -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>",
+          "webhook_url":"http://webhook-sink/post","webhook_secret":"shh"}'
+# httpbin echoes the received POST at http://127.0.0.1:8080/post
+docker compose -f docker-compose.dev.yml logs webhook-sink
+```
+
+---
+
 ## 사용 방식
 
 | 모드 | 설치 | 실행 | 용도 |
 |---|---|---|---|
-| 라이브러리 | `pip install git+...` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
-| HTTP 서비스 | `pip install "email-service[http] @ git+..."` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
+| 라이브러리 | `pip install email-service` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
+| HTTP 서비스 | `pip install "email-service[http]"` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
 
 설치 명령 전체 예시:
 
 ```bash
-# 라이브러리로만 사용
-pip install git+https://github.com/hwan96-ai/email-service.git
+# 라이브러리로만 사용 (PyPI)
+pip install email-service
 
-# HTTP 서비스로 띄워서 사용
+# HTTP 서비스로 띄워서 사용 (PyPI)
+pip install "email-service[http]"
+
+# 아직 PyPI 에 게시 안 된 버전을 미리 받고 싶을 때 (git 직접 설치)
+pip install git+https://github.com/hwan96-ai/email-service.git
 pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
 
 요구 사항: Python **3.10+**.
+
+---
+
+## 30초 안에 첫 메일 보내기
+
+`python -m email_service test` 서브커맨드가 환경변수만으로 SMTP 설정을 검증하고 테스트 메일 한 통을 즉시 발송한다. 발송 결과가 `SendResult` 형태로 stdout 에 떨어진다.
+
+```bash
+# 1) 설치
+pip install email-service
+
+# 2) 환경변수 (Gmail 예시 — 앱 비밀번호 권장)
+export SMTP_HOST=smtp.gmail.com
+export SMTP_USER=sender@gmail.com
+export SMTP_PASSWORD=app-password
+# API_KEY 는 test 서브커맨드에서는 필요 없음 (HTTP 서버 모드 전용)
+
+# 3) 발송
+python -m email_service test --to me@example.com
+#   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
+#   exit 0 on success, exit 1 on failure (with error_code printed)
+```
+
+자세한 옵션: `python -m email_service test --help`.
 
 ---
 
@@ -57,7 +239,7 @@ pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-servic
 
 ```bash
 # 1) 설치
-pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
+pip install "email-service[http]"
 
 # 2) 환경변수 설정 (최소)
 export SMTP_HOST=smtp.gmail.com
