@@ -11,6 +11,10 @@ dependencies = []
 
 # TODO: generate a `requirements.lock` (e.g. via `uv lock` or `pip-compile`) to
 # pin transitive dependencies once a lock-file tool is available in CI.
+[tool.setuptools.packages.find]
+include = ["email_service*"]
+exclude = ["tests*", "examples*", "skills*", "roadmap*", "reports*", ".claude*"]
+
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "httpx>=0.27,<1"]
 http = [
