@@ -21,7 +21,9 @@ def _cmd_serve(_args: argparse.Namespace) -> int:
     import uvicorn
 
     from email_service.api import create_app
+    from email_service.logging_config import configure_logging
 
+    configure_logging()
     app = create_app()
     uvicorn.run(
         app,

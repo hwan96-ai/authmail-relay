@@ -39,6 +39,76 @@
 
 ---
 
+## Operations
+
+운영 환경에서 발송 성공률·실패 사유·지연을 관측하기 위한 옵트인 기능들이다. 모두 환경변수로 켤 수 있으며, 기본값은 모두 off — 기존 동작과 100% 호환된다.
+
+### Prometheus 메트릭 (`/metrics`)
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `METRICS_ENABLED` | `false` | `true` 일 때 `GET /metrics` 활성화. `prometheus-client` 설치 필요. |
+| `METRICS_REQUIRE_AUTH` | `false` | `true` 일 때 `/metrics` 호출에도 `Authorization: Bearer $API_KEY` 강제. |
+
+활성화:
+
+```bash
+pip install "email-service[http]"   # prometheus-client 포함
+METRICS_ENABLED=true python -m email_service
+curl http://127.0.0.1:8000/metrics
+```
+
+노출되는 시리즈:
+
+- `email_send_total{result, error_code}` — Counter. `result` 는 `success` / `failure`, `error_code` 는 `crlf_in_header` / `smtp_auth_failed` / `smtp_connection` / `smtp_timeout` / `recipient_refused` / `starttls_unsupported` / `unknown` (`success` 시 빈 문자열).
+- `email_send_duration_seconds` — Histogram. SMTP 호출 한 건의 종단 지연 (초).
+- `email_send_active` — Gauge. 현재 처리 중인 발송 건수.
+
+샘플 출력:
+
+```
+# HELP email_send_total Total email send attempts
+# TYPE email_send_total counter
+email_send_total{result="success",error_code=""} 42.0
+email_send_total{result="failure",error_code="smtp_connection"} 3.0
+email_send_duration_seconds_bucket{le="0.5"} 41.0
+```
+
+권장 알람 (Prometheus):
+
+```yaml
+- alert: EmailFailureRateHigh
+  expr: rate(email_send_total{result="failure"}[5m]) > 0.05
+  for: 10m
+  annotations:
+    summary: "email-service failure rate above 5% for 10 minutes"
+```
+
+### 구조화 로그 (JSON)
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `EMAIL_SERVICE_LOG_FORMAT` | `text` | `json` 일 때 `python-json-logger` 로 JSON 한 줄 로그 출력. |
+| `EMAIL_SERVICE_DEBUG` | `0` | `1` 일 때 `smtplib.set_debuglevel(1)` 활성화 (개발 전용). |
+
+PII 안전성: 수신자 이메일 주소는 절대 평문으로 로그에 남지 않는다. 모든 발송 로그는 SHA-256 해시 앞 8자(`to_hash`) 로 표기되며, `error_code`·`duration_ms`·`message_id`·`request_id` 가 함께 기록된다.
+
+> ⚠️ **보안 주의**: `EMAIL_SERVICE_DEBUG=1` 은 `smtplib` 의 디버그 출력을 stderr 로 보내며, 여기에는 `AUTH PLAIN <base64>` 라인이 포함된다 (즉, 비밀번호가 base64 로 노출). 절대 운영 환경에서는 켜지 말 것. 표준 라이브러리 한계상 이 라인을 안전하게 마스킹할 수 없다.
+
+### 분산 트레이싱 (`X-Request-ID`)
+
+모든 요청은 `X-Request-ID` 헤더를 echo 하며, 헤더가 없으면 UUID 가 자동 발급된다. 이 ID 는 SMTP 발송 로그까지 그대로 전파되어, 게이트웨이 → email-service → SMTP 의 풀 트레이스를 단일 ID 로 grep 할 수 있다.
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" \
+     -H "X-Request-ID: trace-abc-123" \
+     -X POST http://127.0.0.1:8000/send \
+     -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>"}'
+# Response includes: X-Request-ID: trace-abc-123
+```
+
+---
+
 ## 사용 방식
 
 | 모드 | 설치 | 실행 | 용도 |

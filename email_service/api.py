@@ -4,11 +4,14 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import uuid
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
+from email_service import metrics as metrics_module
 from email_service.notifiers import MagicLinkNotifier, OTPNotifier
 from email_service.sender import SmtpConfig, SmtpSender
 
@@ -96,6 +99,10 @@ def _is_dry_run(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _DRY_RUN_TRUE
 
 
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in _DRY_RUN_TRUE
+
+
 _DRY_RUN_RESULT = SendResult(
     sent=False, dry_run=True, message="Email payload is valid"
 )
@@ -146,6 +153,33 @@ def create_app(
     app = FastAPI(title="email-service")
     bearer = HTTPBearer(auto_error=False)
 
+    @app.middleware("http")
+    async def trace_id_middleware(request: Request, call_next):
+        tid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        # Make trace id available to route handlers via request.state.
+        request.state.request_id = tid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = tid
+        return response
+
+    def _metrics_auth(request: Request) -> None:
+        if not _truthy(os.environ.get("METRICS_REQUIRE_AUTH")):
+            return
+        auth = request.headers.get("authorization", "")
+        token = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+        if not token or not hmac.compare_digest(token, api_key):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
+            )
+
+    @app.get("/metrics")
+    def metrics(request: Request) -> Response:
+        if not metrics_module.metrics_available():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "metrics disabled")
+        _metrics_auth(request)
+        body, content_type = metrics_module.render_latest()
+        return Response(content=body, media_type=content_type)
+
     def verify_key(
         creds: HTTPAuthorizationCredentials | None = Depends(bearer),
     ) -> None:
@@ -180,6 +214,7 @@ def create_app(
     )
     def send_email(
         req: SendEmailRequest,
+        request: Request,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
     ) -> SendResult:
@@ -192,6 +227,7 @@ def create_app(
             text_body=req.text_body,
             cc=req.cc,
             bcc=req.bcc,
+            request_id=getattr(request.state, "request_id", None),
         )
         if not result.sent:
             _fail(result)
