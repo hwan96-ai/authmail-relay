@@ -39,6 +39,20 @@ def _auth():
     return {"Authorization": f"Bearer {API_KEY}"}
 
 
+class TestOpenAPIMetadata:
+    def test_every_path_has_summary_and_tags(self):
+        client = TestClient(_app())
+        spec = client.get("/openapi.json").json()
+        assert spec["info"]["version"] == "0.2.0"
+        assert "description" in spec["info"]
+        assert spec["info"].get("contact", {}).get("name") == "email-service"
+
+        for path, methods in spec["paths"].items():
+            for method, op in methods.items():
+                assert "summary" in op, f"{method.upper()} {path} missing summary"
+                assert op.get("tags"), f"{method.upper()} {path} missing tags"
+
+
 class TestHealth:
     def test_returns_ok(self):
         client = TestClient(_app())

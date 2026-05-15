@@ -446,6 +446,129 @@ class TestTemplateNotifier:
         assert base64.b64decode(plain.get_payload()).decode("utf-8") == "order <script>x</script>"
 
 
+class TestMagicLinkPlainText:
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_plain_text_alternative_attached(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = MagicLinkNotifier(
+            sender, base_url="https://app.example.com",
+        )
+        notifier.send("user@test.com", "홍길동", "tok123")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        plain = next(p for p in msg.walk() if p.get_content_type() == "text/plain")
+        body = base64.b64decode(plain.get_payload()).decode("utf-8")
+        assert "홍길동" in body
+        assert "https://app.example.com/set-password?token=tok123" in body
+
+
+class TestOTPPlainText:
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_plain_text_alternative_attached(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = OTPNotifier(sender)
+        notifier.send("user@test.com", "홍길동", "482901")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        plain = next(p for p in msg.walk() if p.get_content_type() == "text/plain")
+        body = base64.b64decode(plain.get_payload()).decode("utf-8")
+        assert "홍길동" in body
+        assert "482901" in body
+
+
+class TestNotifierI18n:
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_magic_link_custom_subject_and_template(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = MagicLinkNotifier(
+            sender,
+            base_url="https://app.example.com",
+            subject="Set your password",
+            html_template="<p>Hello {name}, link: {link} (expires in {expire}m)</p>",
+            text_template="Hello {name}, link: {link} ({expire}m)",
+        )
+        notifier.send("user@test.com", "Alice", "tokABC")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        decoded = str(email.header.make_header(email.header.decode_header(msg["Subject"])))
+        assert decoded == "Set your password"
+
+        html = _extract_html(mock_server)
+        assert "Hello Alice" in html
+        assert "/set-password?token=tokABC" in html
+
+        plain = next(p for p in msg.walk() if p.get_content_type() == "text/plain")
+        text = base64.b64decode(plain.get_payload()).decode("utf-8")
+        assert "Hello Alice" in text
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_otp_custom_subject_and_template(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = OTPNotifier(
+            sender,
+            subject="Your code",
+            html_template="<p>Hi {name}, code: {payload}, expires {expire}m</p>",
+        )
+        notifier.send("user@test.com", "Bob", "999111")
+
+        raw = mock_server.sendmail.call_args[0][2]
+        msg = email.message_from_string(raw)
+        decoded = str(email.header.make_header(email.header.decode_header(msg["Subject"])))
+        assert decoded == "Your code"
+
+        html = _extract_html(mock_server)
+        assert "Hi Bob" in html
+        assert "999111" in html
+
+
+class TestTemplateNotifierNoAutoescape:
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_autoescape_false_passes_raw_html(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = TemplateNotifier(
+            sender,
+            subject="raw test",
+            html_template="<div>{snippet}</div>",
+            autoescape=False,
+        )
+        notifier.send("user@test.com", snippet="<script>x</script>")
+
+        html = _extract_html(mock_server)
+        # autoescape=False — raw is passed through unescaped
+        assert "<script>x</script>" in html
+        assert "&lt;script&gt;" not in html
+
+    @patch("email_service.sender.smtplib.SMTP")
+    def test_autoescape_true_escapes_same_value(self, mock_smtp_cls):
+        mock_server = _mock_server(mock_smtp_cls)
+
+        sender = _make_sender()
+        notifier = TemplateNotifier(
+            sender,
+            subject="escaped test",
+            html_template="<div>{snippet}</div>",
+            autoescape=True,
+        )
+        notifier.send("user@test.com", snippet="<script>x</script>")
+
+        html = _extract_html(mock_server)
+        assert "&lt;script&gt;x&lt;/script&gt;" in html
+        assert "<script>x</script>" not in html
+
+
 class TestSendResult:
     """Verify structured error codes for each failure mode."""
 

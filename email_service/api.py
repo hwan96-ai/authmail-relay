@@ -167,7 +167,26 @@ def create_app(
     if otp is None:
         otp = OTPNotifier(sender)
 
-    app = FastAPI(title="email-service")
+    app = FastAPI(
+        title="email-service",
+        version="0.2.0",
+        description=(
+            "SMTP-based HTML email service with magic-link and OTP notifiers. "
+            "All write endpoints require Bearer authentication and support "
+            "`X-Dry-Run: true` for payload validation without sending. "
+            "Async delivery is available by including a `webhook_url` in the "
+            "request body."
+        ),
+        contact={
+            "name": "email-service",
+            "url": "https://github.com/hwan96-ai/email-service",
+        },
+        openapi_tags=[
+            {"name": "Email", "description": "Email send endpoints."},
+            {"name": "Health", "description": "Liveness / readiness probes."},
+            {"name": "Metrics", "description": "Prometheus metrics endpoint."},
+        ],
+    )
     bearer = HTTPBearer(auto_error=False)
 
     @app.middleware("http")
@@ -189,7 +208,16 @@ def create_app(
                 status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
             )
 
-    @app.get("/metrics")
+    @app.get(
+        "/metrics",
+        summary="Prometheus metrics",
+        tags=["Metrics"],
+        description=(
+            "Prometheus exposition format. Returns 404 when prometheus-client "
+            "is not installed. Optionally protected by `METRICS_REQUIRE_AUTH=true`."
+        ),
+        response_description="Plain-text Prometheus exposition.",
+    )
     def metrics(request: Request) -> Response:
         if not metrics_module.metrics_available():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "metrics disabled")
@@ -205,7 +233,13 @@ def create_app(
                 status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
             )
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        summary="Health check",
+        tags=["Health"],
+        description="Liveness probe. Always returns `{\"status\": \"ok\"}` when the process is running.",
+        response_description="Always `{\"status\": \"ok\"}`.",
+    )
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
@@ -259,6 +293,14 @@ def create_app(
         response_model=SendResult,
         response_model_exclude_none=True,
         responses=_failure_responses,
+        summary="Send raw HTML email",
+        tags=["Email"],
+        description=(
+            "Send an arbitrary HTML email. Use `X-Dry-Run: true` to validate "
+            "the payload without contacting SMTP. Include `webhook_url` in the "
+            "body to deliver asynchronously and receive the result by webhook."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_email(
         req: SendEmailRequest,
@@ -314,6 +356,14 @@ def create_app(
         response_model=SendResult,
         response_model_exclude_none=True,
         responses=_failure_responses,
+        summary="Send password-setup magic link",
+        tags=["Email"],
+        description=(
+            "Send a password-setup magic link to the user. Requires "
+            "`MAGIC_LINK_BASE_URL` to be configured at startup. The token is "
+            "URL-encoded automatically."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_magic_link(
         req: SendMagicLinkRequest,
@@ -354,6 +404,14 @@ def create_app(
         response_model=SendResult,
         response_model_exclude_none=True,
         responses=_failure_responses,
+        summary="Send one-time password (OTP)",
+        tags=["Email"],
+        description=(
+            "Send a one-time password code via email. The `code` field is "
+            "rendered verbatim into the email body — generate it on the caller "
+            "side."
+        ),
+        response_description="Send result with message id and delivery status.",
     )
     def send_otp(
         req: SendOTPRequest,
