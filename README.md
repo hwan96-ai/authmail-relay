@@ -43,20 +43,48 @@
 
 | 모드 | 설치 | 실행 | 용도 |
 |---|---|---|---|
-| 라이브러리 | `pip install git+...` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
-| HTTP 서비스 | `pip install "email-service[http] @ git+..."` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
+| 라이브러리 | `pip install email-service` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
+| HTTP 서비스 | `pip install "email-service[http]"` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
 
 설치 명령 전체 예시:
 
 ```bash
-# 라이브러리로만 사용
-pip install git+https://github.com/hwan96-ai/email-service.git
+# 라이브러리로만 사용 (PyPI)
+pip install email-service
 
-# HTTP 서비스로 띄워서 사용
+# HTTP 서비스로 띄워서 사용 (PyPI)
+pip install "email-service[http]"
+
+# 아직 PyPI 에 게시 안 된 버전을 미리 받고 싶을 때 (git 직접 설치)
+pip install git+https://github.com/hwan96-ai/email-service.git
 pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
 
 요구 사항: Python **3.10+**.
+
+---
+
+## 30초 안에 첫 메일 보내기
+
+`python -m email_service test` 서브커맨드가 환경변수만으로 SMTP 설정을 검증하고 테스트 메일 한 통을 즉시 발송한다. 발송 결과가 `SendResult` 형태로 stdout 에 떨어진다.
+
+```bash
+# 1) 설치
+pip install email-service
+
+# 2) 환경변수 (Gmail 예시 — 앱 비밀번호 권장)
+export SMTP_HOST=smtp.gmail.com
+export SMTP_USER=sender@gmail.com
+export SMTP_PASSWORD=app-password
+# API_KEY 는 test 서브커맨드에서는 필요 없음 (HTTP 서버 모드 전용)
+
+# 3) 발송
+python -m email_service test --to me@example.com
+#   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
+#   exit 0 on success, exit 1 on failure (with error_code printed)
+```
+
+자세한 옵션: `python -m email_service test --help`.
 
 ---
 
@@ -66,7 +94,7 @@ pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-servic
 
 ```bash
 # 1) 설치
-pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
+pip install "email-service[http]"
 
 # 2) 환경변수 설정 (최소)
 export SMTP_HOST=smtp.gmail.com

@@ -11,6 +11,22 @@ from typing import Any
 import httpx
 
 
+class EmailServiceError(Exception):
+    """Raised when the email-service returns a 502 (SMTP delivery failure).
+
+    Carries the structured `error_code` from the server response body so
+    callers can branch on it (e.g. retry on `smtp_timeout`, alert on
+    `smtp_auth_failed`).
+    """
+
+    def __init__(self, error_code: str | None, message: str | None,
+                 *, status_code: int = 502):
+        self.error_code = error_code
+        self.message = message
+        self.status_code = status_code
+        super().__init__(f"{error_code}: {message}")
+
+
 class EmailServiceClient:
     """Synchronous client for the email-service HTTP API.
 
@@ -107,5 +123,20 @@ class EmailServiceClient:
     ) -> dict[str, Any]:
         headers = {"X-Dry-Run": "true"} if dry_run else None
         resp = self._client.post(path, json=payload, headers=headers)
+        if resp.status_code == 502:
+            # Translate 502 into a typed exception so callers can branch on
+            # `error_code` without parsing the JSON themselves.
+            try:
+                body = resp.json()
+            except Exception:
+                body = {}
+            detail = body.get("detail", body) if isinstance(body, dict) else {}
+            if not isinstance(detail, dict):
+                detail = {}
+            raise EmailServiceError(
+                error_code=detail.get("error_code"),
+                message=detail.get("message"),
+                status_code=502,
+            )
         resp.raise_for_status()
         return resp.json()

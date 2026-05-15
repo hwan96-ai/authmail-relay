@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from html import escape
 from urllib.parse import urlencode
 
-from email_service.sender import SmtpSender
+from email_service.sender import SendResult, SmtpSender
 
 
 _MAGIC_LINK_HTML = """\
@@ -49,7 +49,7 @@ class Notifier(ABC):
         self._sender = sender
 
     @abstractmethod
-    def send(self, to_email: str, user_name: str, payload: str) -> bool:
+    def send(self, to_email: str, user_name: str, payload: str) -> SendResult:
         ...
 
 
@@ -67,7 +67,7 @@ class MagicLinkNotifier(Notifier):
         self._prefix = subject_prefix
         self._expire = expire_minutes
 
-    def send(self, to_email: str, user_name: str, payload: str) -> bool:
+    def send(self, to_email: str, user_name: str, payload: str) -> SendResult:
         link = f"{self._base_url}{self._path}?{urlencode({'token': payload})}"
         subject = f"{self._prefix}비밀번호 설정 안내".strip()
         html = _MAGIC_LINK_HTML.format(
@@ -88,7 +88,7 @@ class OTPNotifier(Notifier):
         self._prefix = subject_prefix
         self._expire = expire_minutes
 
-    def send(self, to_email: str, user_name: str, payload: str) -> bool:
+    def send(self, to_email: str, user_name: str, payload: str) -> SendResult:
         subject = f"{self._prefix}비밀번호 설정 인증코드".strip()
         html = _OTP_HTML.format(
             name=escape(user_name),
@@ -117,7 +117,7 @@ class TemplateNotifier:
         self._text_template = text_template
         self._autoescape = autoescape
 
-    def send(self, to_email: str, **context) -> bool:
+    def send(self, to_email: str, **context) -> SendResult:
         html_ctx = _escape_context(context) if self._autoescape else context
         subject = self._subject.format(**context)
         html_body = self._template.format(**html_ctx)

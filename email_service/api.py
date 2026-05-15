@@ -77,6 +77,16 @@ class SendResult(BaseModel):
     sent: bool
     dry_run: bool | None = None
     message: str | None = None
+    message_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    refused: list[str] | None = None
+
+
+class ErrorResponse(BaseModel):
+    """Body of 502 responses when SMTP delivery fails."""
+    error_code: str
+    message: str | None = None
 
 
 _DRY_RUN_TRUE = {"true", "1", "yes"}
@@ -148,10 +158,25 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    _failure_responses = {
+        401: {"description": "Invalid or missing API key"},
+        502: {"model": ErrorResponse, "description": "Email send failed"},
+    }
+
+    def _fail(result) -> None:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": result.error_code,
+                "message": result.error_message,
+            },
+        )
+
     @app.post(
         "/send",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
     )
     def send_email(
         req: SendEmailRequest,
@@ -160,7 +185,7 @@ def create_app(
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
-        ok = sender.send(
+        result = sender.send(
             to=req.to,
             subject=req.subject,
             html_body=req.html_body,
@@ -168,14 +193,15 @@ def create_app(
             cc=req.cc,
             bcc=req.bcc,
         )
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        if not result.sent:
+            _fail(result)
+        return SendResult(sent=True, message_id=result.message_id)
 
     @app.post(
         "/send/magic-link",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
     )
     def send_magic_link(
         req: SendMagicLinkRequest,
@@ -191,15 +217,16 @@ def create_app(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Magic link endpoint not configured (set MAGIC_LINK_BASE_URL)",
             )
-        ok = magic_link.send(req.to, req.user_name, req.token)
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        result = magic_link.send(req.to, req.user_name, req.token)
+        if not result.sent:
+            _fail(result)
+        return SendResult(sent=True, message_id=result.message_id)
 
     @app.post(
         "/send/otp",
         response_model=SendResult,
         response_model_exclude_none=True,
+        responses=_failure_responses,
     )
     def send_otp(
         req: SendOTPRequest,
@@ -208,9 +235,9 @@ def create_app(
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
-        ok = otp.send(req.to, req.user_name, req.code)
-        if not ok:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Email send failed")
-        return SendResult(sent=True)
+        result = otp.send(req.to, req.user_name, req.code)
+        if not result.sent:
+            _fail(result)
+        return SendResult(sent=True, message_id=result.message_id)
 
     return app
