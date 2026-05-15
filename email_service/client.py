@@ -76,6 +76,8 @@ class EmailServiceClient:
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
         dry_run: bool = False,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "to": to,
@@ -88,6 +90,10 @@ class EmailServiceClient:
             payload["cc"] = cc
         if bcc is not None:
             payload["bcc"] = bcc
+        if webhook_url is not None:
+            payload["webhook_url"] = webhook_url
+        if webhook_secret is not None:
+            payload["webhook_secret"] = webhook_secret
         return self._post("/send", payload, dry_run=dry_run)
 
     def send_magic_link(
@@ -97,12 +103,17 @@ class EmailServiceClient:
         token: str,
         *,
         dry_run: bool = False,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
     ) -> dict[str, Any]:
-        return self._post(
-            "/send/magic-link",
-            {"to": to, "user_name": user_name, "token": token},
-            dry_run=dry_run,
-        )
+        payload: dict[str, Any] = {
+            "to": to, "user_name": user_name, "token": token,
+        }
+        if webhook_url is not None:
+            payload["webhook_url"] = webhook_url
+        if webhook_secret is not None:
+            payload["webhook_secret"] = webhook_secret
+        return self._post("/send/magic-link", payload, dry_run=dry_run)
 
     def send_otp(
         self,
@@ -111,12 +122,17 @@ class EmailServiceClient:
         code: str,
         *,
         dry_run: bool = False,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
     ) -> dict[str, Any]:
-        return self._post(
-            "/send/otp",
-            {"to": to, "user_name": user_name, "code": code},
-            dry_run=dry_run,
-        )
+        payload: dict[str, Any] = {
+            "to": to, "user_name": user_name, "code": code,
+        }
+        if webhook_url is not None:
+            payload["webhook_url"] = webhook_url
+        if webhook_secret is not None:
+            payload["webhook_secret"] = webhook_secret
+        return self._post("/send/otp", payload, dry_run=dry_run)
 
     def _post(
         self, path: str, payload: dict[str, Any], *, dry_run: bool

@@ -79,10 +79,21 @@ if _AVAILABLE and METRICS_ENABLED:
         "email_send_active",
         "Emails currently being sent",
     )
+    email_retry_attempts_total = Counter(
+        "email_retry_attempts_total",
+        "Total SMTP send retry attempts",
+        ["reason"],
+    )
+    email_webhook_failed_total = Counter(
+        "email_webhook_failed_total",
+        "Total webhook deliveries that exhausted retries",
+    )
 else:
     email_send_total = _NoOpMetric()  # type: ignore[assignment]
     email_send_duration_seconds = _NoOpMetric()  # type: ignore[assignment]
     email_send_active = _NoOpMetric()  # type: ignore[assignment]
+    email_retry_attempts_total = _NoOpMetric()  # type: ignore[assignment]
+    email_webhook_failed_total = _NoOpMetric()  # type: ignore[assignment]
 
 
 def metrics_available() -> bool:

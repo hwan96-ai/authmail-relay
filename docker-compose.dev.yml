@@ -32,3 +32,13 @@ services:
       - "8025:8025"
       - "1025:1025"
     restart: unless-stopped
+
+  # webhook-sink: echoes any POST it receives. Use this to inspect the
+  # webhook payload your code sends when you supply webhook_url=http://webhook-sink/post.
+  # httpbin's /post echoes the headers + body back as JSON.
+  webhook-sink:
+    image: kennethreitz/httpbin
+    container_name: webhook-sink
+    ports:
+      - "8080:80"
+    restart: unless-stopped

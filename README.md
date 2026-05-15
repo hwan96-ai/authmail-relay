@@ -60,9 +60,11 @@ curl http://127.0.0.1:8000/metrics
 
 노출되는 시리즈:
 
-- `email_send_total{result, error_code}` — Counter. `result` 는 `success` / `failure`, `error_code` 는 `crlf_in_header` / `smtp_auth_failed` / `smtp_connection` / `smtp_timeout` / `recipient_refused` / `starttls_unsupported` / `unknown` (`success` 시 빈 문자열).
+- `email_send_total{result, error_code}` — Counter. `result` 는 `success` / `failure`, `error_code` 는 `crlf_in_header` / `smtp_auth_failed` / `smtp_connection` / `smtp_timeout` / `smtp_transient` / `recipient_refused` / `starttls_unsupported` / `unknown` (`success` 시 빈 문자열).
 - `email_send_duration_seconds` — Histogram. SMTP 호출 한 건의 종단 지연 (초).
 - `email_send_active` — Gauge. 현재 처리 중인 발송 건수.
+- `email_retry_attempts_total{reason}` — Counter. 재시도 시도 횟수 (Phase 4 `max_retries > 0` 일 때).
+- `email_webhook_failed_total` — Counter. webhook 콜백 전달이 최종 실패한 건수.
 
 샘플 출력:
 
@@ -105,6 +107,79 @@ curl -H "Authorization: Bearer $API_KEY" \
      -X POST http://127.0.0.1:8000/send \
      -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>"}'
 # Response includes: X-Request-ID: trace-abc-123
+```
+
+### SMTP 재시도 (`max_retries`)
+
+라이브러리 모드에서만 사용. 기본값 `0` 으로 기존 동작과 호환된다.
+
+```python
+from email_service import SmtpSender, SmtpConfig
+
+sender = SmtpSender(
+    SmtpConfig(host="smtp.gmail.com", port=587, user="u", password="p"),
+    max_retries=2,                  # 1 회 시도 + 2 회 재시도 = 최대 3 회
+    backoff_seconds=(1, 5, 25),     # 지수 백오프; 마지막 값으로 클램프
+)
+```
+
+재시도 대상: `SMTPServerDisconnected`, `SMTPConnectError`, `socket.timeout`, SMTP 4xx 응답. 5xx 영구 실패와 부분 거부(partial refusal) 는 즉시 반환되어 같은 수신자에게 중복 발송되지 않는다. `Message-ID` 는 재시도 전체에서 동일하게 유지된다 (MTA dedup).
+
+각 재시도는 `email_retry_attempts_total{reason}` 카운터를 증가시킨다.
+
+### Test mode — .eml 캡처 (`EMAIL_TEST_CAPTURE_DIR`)
+
+환경변수 `EMAIL_TEST_CAPTURE_DIR` 가 set 되면 SMTP 호출을 건너뛰고 메시지를 `<message_id>.eml` 파일로 디렉토리에 저장한다. 통합 테스트에서 SMTP 없이 메일 내용을 검증할 때 사용.
+
+```bash
+EMAIL_TEST_CAPTURE_DIR=/tmp/outbox pytest tests/
+```
+
+전체 예시는 [examples/integration_test_with_capture.py](examples/integration_test_with_capture.py) 참고.
+
+`dry_run` (HTTP `X-Dry-Run: true`) 과 다름: dry-run 은 페이로드 검증 only (메시지 빌드 안 함), capture mode 는 실제 MIME 메시지를 생성하여 디스크에 저장 (헤더·바디 검증 가능).
+
+### Webhook 콜백 (비동기 발송 통지)
+
+`webhook_url` 을 `POST /send` (또는 `/send/magic-link`, `/send/otp`) 의 body 에 포함하면 발송이 백그라운드로 처리되고 응답은 즉시 `{"sent": false, "status": "accepted"}` 로 반환된다. 최종 결과는 다음 페이로드로 webhook URL 에 POST 된다:
+
+```json
+{
+  "message_id": "<...@host>",
+  "status": "delivered",
+  "error_code": null,
+  "refused": [],
+  "sent_at": "2026-05-15T10:00:00+00:00",
+  "attempts": 1
+}
+```
+
+`webhook_secret` 도 함께 보내면 body 전체에 대한 HMAC-SHA256 서명이 `X-Email-Service-Signature: sha256=<hex>` 헤더로 포함된다.
+
+수신자 측 검증 (Python):
+
+```python
+import hmac, hashlib
+sig = request.headers["X-Email-Service-Signature"]
+expected = "sha256=" + hmac.new(SECRET.encode(), request.body, hashlib.sha256).hexdigest()
+assert hmac.compare_digest(sig, expected)
+```
+
+Webhook 전달 자체는 `(1s, 10s, 60s)` 백오프로 최대 3 회 재시도된다. 최종 실패 시 `email_webhook_failed_total` 메트릭이 증가하며 발송 자체에는 영향을 주지 않는다 (이미 발송 완료).
+
+#### 로컬 webhook 테스트
+
+`docker-compose.dev.yml` 에 포함된 `webhook-sink` (httpbin) 서비스로 페이로드를 즉시 확인할 수 있다:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+curl -H "Authorization: Bearer $API_KEY" \
+     -X POST http://127.0.0.1:8000/send \
+     -H "Content-Type: application/json" \
+     -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>",
+          "webhook_url":"http://webhook-sink/post","webhook_secret":"shh"}'
+# httpbin echoes the received POST at http://127.0.0.1:8080/post
+docker compose -f docker-compose.dev.yml logs webhook-sink
 ```
 
 ---
