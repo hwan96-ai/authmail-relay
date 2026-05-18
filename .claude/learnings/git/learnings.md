@@ -6,6 +6,24 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-release-2026-05-18-001 (verify-only, BLOCK 유지)
+
+3 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-release-2026-05-18-001/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **git-L01** [P0]: Code Gate 통과 ≠ Release ready. release.yml + docs/runbooks + CHANGELOG + version-sync 는 별도 점검 필수. **본 워크플로의 핵심 invariant**.
+- **git-L02** [P1]: PR 머지 가능 ≠ tag push 가능. tag push 자동 publish 구조에서 두 단계 분리 명시 필요.
+- **git-L03** [P2]: autosave hook 의 90 commits → squash merge 권장. PR description 이 의미 단위 변경 요약 역할.
+
+Priors 변경:
+- **L-SEED-06 (tag push 자동 publish)**: **재발** — 1차 release gate (2026-05-16) 발견 후 미수정. severity P0 유지.
+- **L-SEED-07 (mutable refs + OIDC)**: **재발** 동일.
+- **L-SEED-08 (runbook 부재)**: **재발** 동일.
+- 기존 R-1 ~ R-15 (직전 release gate): 모두 미수정 status 그대로. Sprint 1-3 으로 분류.
+
+판정: 🔴 BLOCK (publish 측). 🟡 단일테넌트 PR 생성은 코드 안전 (description 에 release-yml 하드닝 미완 명시 시).
+
+다음 단계: Sprint 1 (release.yml SHA pin + smoke gate + __version__) → Sprint 2 (runbooks + CHANGELOG + README) → Sprint 3 (Linux verify + 선택 Phase A) → re-run `/hwan-refactor-git`.
+
 ## 2026-05-16 — gate-release-2026-05-16-001 (audit-only, BLOCK verdict) [LEGACY FORMAT]
 
 ### L1 — GitHub Actions `@v4` 같은 mutable tag + OIDC publish = 단일 침해점
