@@ -41,9 +41,14 @@ def _auth():
 
 class TestOpenAPIMetadata:
     def test_every_path_has_summary_and_tags(self):
+        # OpenAPI version is now sourced from email_service.__version__
+        # (which itself reads pyproject via importlib.metadata). Avoid
+        # hardcoding — assert it tracks the package.
+        import email_service
         client = TestClient(_app())
         spec = client.get("/openapi.json").json()
-        assert spec["info"]["version"] == "0.2.0"
+        assert spec["info"]["version"] == email_service.__version__
+        assert spec["info"]["version"]  # non-empty
         assert "description" in spec["info"]
         assert spec["info"].get("contact", {}).get("name") == "email-service"
 
