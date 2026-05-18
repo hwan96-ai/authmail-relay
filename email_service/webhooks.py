@@ -3,6 +3,23 @@
 Uses ``httpx`` (already required by the SDK extras) so we do not add a new
 dependency. Retries with bounded backoff. HMAC-SHA256 signs the body when
 a secret is provided so recipients can verify authenticity.
+
+# Replay-attack defense (V2 signature)
+
+In addition to the legacy ``X-Email-Service-Signature`` header (sha256 of the
+body bytes only), this module emits ``X-Email-Service-Signature-V2`` which
+covers ``"<timestamp>.<body>"`` and an ``X-Email-Service-Timestamp`` header
+(integer Unix-epoch seconds).
+
+**Recipients SHOULD migrate to V2:**
+
+1. Read the ``X-Email-Service-Timestamp`` header.
+2. Reject if abs(now - timestamp) > 5 minutes (anti-replay window).
+3. Compute ``hmac_sha256(secret, f"{timestamp}.{body}")`` and compare
+   constant-time with the V2 header digest.
+
+V1 (body-only) remains for backward compatibility but is vulnerable to
+indefinite replay if captured. Plan to remove V1 in a future major version.
 """
 from __future__ import annotations
 
@@ -17,11 +34,14 @@ from typing import Any
 import httpx
 
 from email_service.metrics import email_webhook_failed_total
+from email_service.url_validation import validate_webhook_url
 
 logger = logging.getLogger(__name__)
 
 
 SIGNATURE_HEADER = "X-Email-Service-Signature"
+SIGNATURE_HEADER_V2 = "X-Email-Service-Signature-V2"
+TIMESTAMP_HEADER = "X-Email-Service-Timestamp"
 # P0-1 (threadpool starvation): bounded total sleep budget. Previous
 # (1, 10, 60) summed to 71s while running on a sync BackgroundTask, which
 # pinned a starlette threadpool worker per retry. Sum now ≤ 8s before jitter.
@@ -39,7 +59,15 @@ def _jittered(delay: float) -> float:
 
 
 def _sign(body: bytes, secret: str) -> str:
+    """V1: signature over body only. Vulnerable to replay if captured."""
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return f"sha256={digest}"
+
+
+def _sign_v2(timestamp: str, body: bytes, secret: str) -> str:
+    """V2: signature over ``"<timestamp>.<body>"`` bytes — anti-replay."""
+    payload = timestamp.encode("ascii") + b"." + body
+    digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 
 
