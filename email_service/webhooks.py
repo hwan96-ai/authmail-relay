@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import random
 import time
 from typing import Any
 
@@ -21,8 +22,20 @@ logger = logging.getLogger(__name__)
 
 
 SIGNATURE_HEADER = "X-Email-Service-Signature"
-DEFAULT_BACKOFFS: tuple[int, ...] = (1, 10, 60)
+# P0-1 (threadpool starvation): bounded total sleep budget. Previous
+# (1, 10, 60) summed to 71s while running on a sync BackgroundTask, which
+# pinned a starlette threadpool worker per retry. Sum now ≤ 8s before jitter.
+DEFAULT_BACKOFFS: tuple[float, ...] = (1.0, 2.0, 5.0)
 DEFAULT_MAX_RETRIES = 3
+# ±25% jitter to avoid thundering herd against a shared webhook target.
+_JITTER_RATIO = 0.25
+
+
+def _jittered(delay: float) -> float:
+    if delay <= 0:
+        return 0.0
+    spread = delay * _JITTER_RATIO
+    return max(0.0, delay + random.uniform(-spread, spread))
 
 
 def _sign(body: bytes, secret: str) -> str:
