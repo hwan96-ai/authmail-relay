@@ -6,6 +6,20 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-test-fix-2026-05-18-001 (test-only flakiness 해결)
+
+2 신규 learning (test infra). 전체 11-필드 schema 는 `../../workflow/gate-test-fix-2026-05-18-001/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **test-L01** [P2]: 동시성 verification 테스트는 unit level 우선. HTTP TestClient 위에 ThreadPoolExecutor 패턴은 thread-safety 한계로 flaky. 동시성 invariant 는 lock/cache 컴포넌트 직접 호출로 검증.
+- **test-L02** [P3]: production critical section (`_idempotency_guard`) 의 closure 를 test 가 emulate 함. production 변경 시 emulator 동기화 필수. 향후 `_idempotency_guard` 를 모듈 레벨로 빼면 (code-L11/L14 AppDependencies refactor) test-L02 자동 무력화 가능.
+
+Priors 변경:
+- **git-L06 (TestClient flakiness)**: **RESOLVED-By: gate-test-fix-2026-05-18-001** — unit-level 재작성. 10/10 pass (이전 40% flaky).
+- L-SEED-01: 7회차 invocation, 영구 active 유지.
+- code-L24 (평탄화 예측): 본 fix 가 새 추상화 0개 → 다음 release verify 가 0 finding 이면 평탄화 완료.
+
+P0 5건 + P1 4 tier + release-side P0 3건 모두 RESOLVED 또는 STABLE. PR 생성 readiness 완전 회복.
+
 ## 2026-05-18 — gate-code-verify-2026-05-18-008 (verify-only, 평탄화 확정)
 
 **0 신규 secondary 결함 발견.** code-L24 (fix→verify 사이클의 평탄화) 예측 적중 — 4번째 verify pass 에서 처음 0-finding 달성. 5 P0 + 4 P1 tier 모두 STABLE. Release Gate 진입 가능.
