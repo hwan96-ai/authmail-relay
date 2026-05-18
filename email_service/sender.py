@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 ERR_CRLF_IN_HEADER = "crlf_in_header"
 ERR_SMTP_AUTH_FAILED = "smtp_auth_failed"
 ERR_SMTP_CONNECTION = "smtp_connection"
+# P0-5: connection died while in the middle of sendmail() — we don't know if
+# the server accepted the message or not. Returning this code marks the send
+# as non-retriable to avoid double-delivery when the message DID arrive.
+ERR_SMTP_DISCONNECT_UNCERTAIN = "smtp_disconnect_uncertain"
 ERR_SMTP_TIMEOUT = "smtp_timeout"
 ERR_SMTP_TRANSIENT = "smtp_transient"
 ERR_RECIPIENT_REFUSED = "recipient_refused"
