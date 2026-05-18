@@ -92,7 +92,8 @@ Next-Session Checklist Item: "재시도 로직을 추가/수정했는가? phase 
 Applies To: email_service/sender.py
 Owner Gate: code
 Evidence: sender.py:225-291 (gate-code-2026-05-16-001/SUMMARY.md P0-5)
-Status: active
+Status: resolved
+Resolved-By: gate-code-fix-2026-05-18-001 (sendmail_returned flag + ERR_SMTP_DISCONNECT_UNCERTAIN)
 ```
 
 ### L-SEED-06
