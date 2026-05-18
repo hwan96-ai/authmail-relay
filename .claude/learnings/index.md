@@ -159,3 +159,4 @@ Status: active
 | 2026-05-18 | code | gate-code-fix-2026-05-18-001 | 5 (L-SEED-01,-02,-03,-04,-05) | 3 (code-L09,-L10,-L11) | 0 | [link](../workflow/gate-code-fix-2026-05-18-001/SUMMARY.md) — 4 P0 resolved, 1 partial (L-SEED-02) |
 | 2026-05-18 | code | gate-code-verify-2026-05-18-002 | 8 (all priors) | 2 (code-L12,-L13) | 1 (L-SEED-01 재입증) | [link](../workflow/gate-code-verify-2026-05-18-002/SUMMARY.md) — verify-only, 5 P0 결과 확인, 2 신규 P1 (SSRF 잔여) |
 | 2026-05-18 | code | gate-code-fix-2026-05-18-003 | 7 (active priors) | 3 (code-L14,-L15,-L16) | 1 (code-L09 generalized → code-L15) | [link](../workflow/gate-code-fix-2026-05-18-003/SUMMARY.md) — 3 P1 surgical, +17 tests, code-L12 resolved |
+| 2026-05-18 | code | gate-code-verify-2026-05-18-004 | 10 (all active) | 3 (code-L17,-L18,-L19) | 2 (code-L11, L14 재발) | [link](../workflow/gate-code-verify-2026-05-18-004/SUMMARY.md) — verify-only post P1 fix, 5 P0 stable, 3 secondary gap, SHIP eligible single-tenant |
