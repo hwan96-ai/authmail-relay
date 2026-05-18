@@ -6,6 +6,18 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-fix-2026-05-18-007 (NEW-V-4 surgical fix)
+
+1 신규 learning + 1 prior RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-007/SUMMARY.md` "New Learnings Captured" 참조.
+
+- **code-L25** [P2]: per-key lock dict 메모리 bound — unique-key cardinality 로만 bound. 적대적 caller 가능 시 idle TTL / LRU 필요. 이번 pass TODO 로만 명시.
+
+Priors 변경:
+- **code-L23 (lock-eviction race)**: **RESOLVED-By: gate-code-fix-2026-05-18-007** — `_IdempotencyCache` 의 3 `_key_locks.pop` 호출 제거. cache entry lifecycle 과 lock dict lifecycle 분리. 4 회귀 테스트 (unit 2 + integration 2) 추가.
+- code-L24 (meta): 본 pass 가 단순 line 제거 + TODO 추가 (새 추상화 0개) → 신규 secondary 결함 가능성 매우 낮음. **평탄화 cycle 시작**. 다음 verify 에서 0 finding 이면 평탄화 확정.
+
+P0 5건 + P1 1차/secondary/tertiary 모두 RESOLVED 또는 STABLE.
+
 ## 2026-05-18 — gate-code-verify-2026-05-18-006 (verify-only, post secondary P1 fix)
 
 2 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-006/SUMMARY.md` "New Learnings Captured" 참조.
