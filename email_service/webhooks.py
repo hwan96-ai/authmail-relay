@@ -105,7 +105,7 @@ def deliver_webhook(
                 )
             if attempt < max_total:
                 idx = min(attempt - 1, len(backoffs) - 1)
-                time.sleep(backoffs[idx])
+                time.sleep(_jittered(float(backoffs[idx])))
         # All attempts failed.
         email_webhook_failed_total.inc()
         logger.error(
