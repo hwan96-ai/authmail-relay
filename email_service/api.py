@@ -228,6 +228,21 @@ MAX_IDEMPOTENCY_KEY_LEN = 128
 _IDEMPOTENCY_MAX_ENTRIES = 10_000
 
 
+def _body_fingerprint(req: BaseModel) -> str:
+    """SHA-256 of the canonical JSON dump of a Pydantic request model.
+
+    Used by the idempotency layer to detect that a caller reused an
+    ``Idempotency-Key`` with a different request body (NEW-V-2). Excludes no
+    fields: every field is part of the request's identity (different
+    ``webhook_secret`` or ``webhook_url`` is a different request).
+    """
+    payload = req.model_dump(exclude_none=False, mode="json")
+    canonical = _json.dumps(
+        payload, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 class _IdempotencyCache:
     """Per-bearer dedup of ``Idempotency-Key`` -> cached response.
 
