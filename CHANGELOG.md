@@ -4,6 +4,10 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Release pipeline
+
+- `release.yml`: split into a 2-step manual gate. Tag push now runs `build-and-smoke` only — it no longer triggers PyPI publish. Publishing requires explicit `workflow_dispatch` from the Actions UI with the target tag as input. Rationale: private repos may not expose Environment "Required reviewers", so the `environment: pypi` gate alone could not guarantee manual approval. The workflow_dispatch invocation IS the human approval gate. Required reviewers, if available, layers on top.
+
 ## [0.4.0] - 2026-05-18
 
 Security and reliability hardening. **No breaking changes to the existing response schema** — additive only. SDK callers do NOT need code changes.
