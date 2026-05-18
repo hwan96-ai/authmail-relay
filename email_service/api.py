@@ -167,6 +167,59 @@ _DRY_RUN_RESULT = SendResult(
 )
 
 
+class _SlidingWindowLimiter:
+    """Per-key sliding window. P0-4: protect SMTP reputation if API_KEY leaks.
+
+    In-memory and per-process (multi-worker deployments use this as a
+    per-worker cap, which is the intended behavior — a leaked key cannot
+    burn out the SMTP provider even if it hits every worker). Bounded
+    memory: at most ``max_requests`` timestamps per key.
+    """
+
+    def __init__(self, max_requests: int, window_seconds: float) -> None:
+        self._max = max(0, int(max_requests))
+        self._window = float(window_seconds)
+        self._buckets: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    @property
+    def enabled(self) -> bool:
+        return self._max > 0
+
+    def check(self, key: str, *, now: float | None = None) -> tuple[bool, float]:
+        """Return ``(allowed, retry_after_seconds)``.
+
+        ``retry_after_seconds`` is the seconds until the oldest bucket entry
+        ages out. 0.0 when allowed.
+        """
+        if not self.enabled:
+            return True, 0.0
+        t = now if now is not None else time.monotonic()
+        cutoff = t - self._window
+        with self._lock:
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                bucket = deque()
+                self._buckets[key] = bucket
+            while bucket and bucket[0] <= cutoff:
+                bucket.popleft()
+            if len(bucket) >= self._max:
+                # Reject. Retry-After = window - (now - oldest).
+                retry_after = max(1.0, self._window - (t - bucket[0]))
+                return False, retry_after
+            bucket.append(t)
+            return True, 0.0
+
+
+def _build_rate_limiter() -> _SlidingWindowLimiter:
+    raw = os.environ.get("API_RATE_LIMIT_PER_MINUTE", "60")
+    try:
+        limit = int(raw)
+    except ValueError:
+        limit = 60
+    return _SlidingWindowLimiter(max_requests=limit, window_seconds=60.0)
+
+
 def _build_sender_from_env() -> SmtpSender:
     # SMTP_USER/PASSWORD are optional so that no-auth SMTP servers
     # (Mailpit, MailHog, ...) can be used via docker-compose.dev.yml.
