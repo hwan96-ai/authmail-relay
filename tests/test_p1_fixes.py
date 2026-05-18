@@ -701,6 +701,7 @@ class TestNewV4_LockEvictionRace:
         With the fix, both threads share the same Lock instance via the
         retained dict entry → sender.send.call_count == 1.
         """
+        from concurrent.futures import ThreadPoolExecutor
         import threading
 
         send_started = threading.Event()
