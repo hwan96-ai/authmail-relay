@@ -6,6 +6,23 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-release-verify-2026-05-18-003 (verify-only, SHIP WITH WATCHLIST)
+
+2 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-release-verify-2026-05-18-003/SUMMARY.md` "New Learnings Captured" 참조.
+
+- **git-L06** [P1]: `test_idempotency_lock_eviction_race` 가 5회 중 2회 실패 (40% flaky). TestClient thread-safety 한계로 추정, 본 fix code 의 race 가 아님 (unit 테스트 100% 통과). 향후 concurrent 테스트는 unit-level 또는 per-thread TestClient 권장.
+- **git-L07** [P2]: GitHub `environment` Required reviewers 같은 외부 설정 의존은 yml 만으로 검증 불가. PR description 에 maintainer setup checklist 명시 필요.
+
+Priors 변경:
+- L-SEED-06/-07/-08: **RESOLVED 유효성 확정** (본 verify 가 fix 의 정확성 8 항목 모두 GREEN 확인)
+- **git-L01**: **VALIDATED** — Code Gate GREEN ≠ Release ready 4 항목 (release.yml/runbooks/CHANGELOG/version-sync) 자동 점검 패턴이 본 verify 에서 그대로 적용됨. actionability 입증.
+- code-L24 (평탄화 예측): 부분 적중. fix 의 새 추상화 0개 → code 측 race 0건. 그러나 TestClient 한계로 인한 test infra 1건 발견. 향후 "code race 0 ≠ test infra 0" 분리.
+- L-SEED-01: 6회차 재입증.
+
+판정: 🟡 SHIP WITH WATCHLIST. 단일테넌트/단일워커 PR 가능. tag push 도 manual approval 차단으로 안전 (단 maintainer 가 pypi Environment Required reviewers 1회 설정 필수).
+
+다음 단계: PR 생성 + flaky test follow-up small PR + (옵션) Linux exotic IP Docker 실측 + (옵션) Phase A retry budget cap.
+
 ## 2026-05-18 — gate-release-fix-2026-05-18-002 (CRIT-2/3/4 surgical resolution)
 
 2 신규 learning + 3 priors RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-release-fix-2026-05-18-002/SUMMARY.md` "New Learnings Captured" 참조.
