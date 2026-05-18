@@ -1,13 +1,16 @@
 """HTTP API wrapping email_service for service-to-service email sending."""
 from __future__ import annotations
 
+import hashlib
 import hmac
+import json as _json
 import logging
 import os
 import threading
 import time
 import uuid
 from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from fastapi import (
