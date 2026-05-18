@@ -4,6 +4,8 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-18
+
 Security and reliability hardening. **No breaking changes to the existing response schema** — additive only. SDK callers do NOT need code changes.
 
 ### Security (P0)
