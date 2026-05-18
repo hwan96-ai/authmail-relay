@@ -248,12 +248,15 @@ def create_app(
     api_key: str | None = None,
     magic_link: MagicLinkNotifier | None = None,
     otp: OTPNotifier | None = None,
+    rate_limiter: _SlidingWindowLimiter | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. Env vars are read only for arguments left as None."""
     if sender is None:
         sender = _build_sender_from_env()
     if api_key is None:
         api_key = _required_env("API_KEY")
+    if rate_limiter is None:
+        rate_limiter = _build_rate_limiter()
 
     if magic_link is None:
         base_url = os.environ.get("MAGIC_LINK_BASE_URL")
