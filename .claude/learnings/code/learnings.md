@@ -6,6 +6,19 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-fix-2026-05-18-003 (P1 surgical fix pass)
+
+3개 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-003/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **code-L14** [P2]: `create_app` 키워드 인자 5개 도달. 6번째 cross-cutting 추가 시 `AppDependencies` dataclass 로 묶기.
+- **code-L15** [P1]: validator 새 호출 지점 추가는 기존 validator 추가와 동일한 fixture 회귀 위험. grep 사전 점검 필요. (code-L09 의 일반화)
+- **code-L16** [P2]: V2 보안 헤더 도입 시 V1 deprecation timeline 동시 명시 필요. 호환성 유지가 보안 부채 영구화로 이어지지 않게.
+
+Priors 상태 변경:
+- **code-L12 (SSRF DNS rebinding)**: **RESOLVED-By: gate-code-fix-2026-05-18-003** — `deliver_webhook` 시작 시 재검증 추가. TOCTOU 윈도우 ms 단위로 축소. 완전 제거 (IP pinning) 는 후속.
+- code-L09 (validator + 기존 fixture): 일반화하여 code-L15 로 진화. code-L09 도 active 유지 (구체적 시나리오 기록).
+- L-SEED-02 (BG + sync sleep): active 유지, 의도된 partial fix. SMTP sender retry budget cap 은 다음 small fix pass 권장.
+
 ## 2026-05-18 — gate-code-verify-2026-05-18-002 (verify-only)
 
 2개 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-002/SUMMARY.md` 의 "New Learnings Captured" 참조.
