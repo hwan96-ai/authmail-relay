@@ -26,6 +26,7 @@ from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
+from email_service import __version__
 from email_service import metrics as metrics_module
 from email_service.notifiers import MagicLinkNotifier, OTPNotifier
 from email_service.sender import SmtpConfig, SmtpSender
