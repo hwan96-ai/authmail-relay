@@ -110,6 +110,23 @@ def deliver_webhook(
     try:
         max_total = max(1, int(max_retries))
         for attempt in range(1, max_total + 1):
+            # P1 NEW-V-1: re-validate URL on every attempt to defeat DNS
+            # rebinding ACROSS retries. The validator resolves DNS itself;
+            # if a prior public IP has now rebound to a private/loopback
+            # address, the second attempt is blocked before httpx connects.
+            # Full elimination still requires IP pinning, but this closes
+            # the inter-retry window (was up to ~8s; now ~ms per attempt).
+            try:
+                validate_webhook_url(url)
+            except ValueError as exc:
+                email_webhook_failed_total.inc()
+                logger.error(
+                    "Webhook URL rejected at attempt %d (possible DNS rebinding): %s",
+                    attempt,
+                    exc,
+                    extra={"message_id": message_id, "attempts": attempt},
+                )
+                return False
             try:
                 resp = client.post(url, content=body, headers=headers)
                 if 200 <= resp.status_code < 300:
