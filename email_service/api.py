@@ -430,6 +430,62 @@ def create_app(
                 headers={"Retry-After": str(int(retry_after) or 1)},
             )
 
+    def _check_idempotency_key(value: str | None) -> str | None:
+        """Validate header shape only. Returns the key when valid."""
+        if value is None:
+            return None
+        v = value.strip()
+        if not v:
+            return None
+        if len(v) > MAX_IDEMPOTENCY_KEY_LEN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Idempotency-Key length exceeds "
+                    f"{MAX_IDEMPOTENCY_KEY_LEN} characters"
+                ),
+            )
+        return v
+
+    def _idempotency_lookup(
+        creds: HTTPAuthorizationCredentials | None,
+        idem_key: str | None,
+    ) -> dict | None:
+        if idem_key is None or not idempotency_cache.enabled:
+            return None
+        bearer_tok = creds.credentials if creds is not None else "_anon"
+        return idempotency_cache.get(bearer_tok, idem_key)
+
+    def _idempotency_store(
+        creds: HTTPAuthorizationCredentials | None,
+        idem_key: str | None,
+        result: SendResult,
+    ) -> None:
+        if (
+            idem_key is None
+            or not idempotency_cache.enabled
+            or not result.sent
+        ):
+            # Only cache successful sends. Errors (502) should NOT be replayed
+            # — caller may have fixed the issue and want a retry to actually
+            # execute. Accepted/queued (sent=False, status=accepted) is
+            # cached because the work is in flight via webhook.
+            if (
+                idem_key is not None
+                and idempotency_cache.enabled
+                and result.status == "accepted"
+            ):
+                pass  # fall through
+            else:
+                return
+        bearer_tok = creds.credentials if creds is not None else "_anon"
+        # Serialize to a plain dict to avoid storing the Pydantic instance.
+        idempotency_cache.put(
+            bearer_tok,
+            idem_key,
+            result.model_dump(exclude_none=True),
+        )
+
     @app.get(
         "/health",
         summary="Health check",
