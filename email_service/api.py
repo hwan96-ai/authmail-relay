@@ -436,7 +436,7 @@ def create_app(
 
     app = FastAPI(
         title="email-service",
-        version="0.2.0",
+        version=__version__,
         description=(
             "SMTP-based HTML email service with magic-link and OTP notifiers. "
             "All write endpoints require Bearer authentication and support "
