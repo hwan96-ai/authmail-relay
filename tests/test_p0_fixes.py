@@ -177,8 +177,10 @@ class TestP0_2_SSRFDefense:
 class TestP0_3_SizeLimits:
     def _app(self):
         from email_service.notifiers import OTPNotifier
+        sender = MagicMock()
+        sender.send.return_value = SendResult(sent=True, message_id="<x@h>")
         return create_app(
-            sender=MagicMock(), api_key="k", otp=MagicMock(spec=OTPNotifier)
+            sender=sender, api_key="k", otp=MagicMock(spec=OTPNotifier)
         )
 
     def _post_send(self, client, **overrides):
