@@ -502,42 +502,68 @@ def create_app(
             )
         return v
 
-    def _idempotency_lookup(
-        creds: HTTPAuthorizationCredentials | None,
-        idem_key: str | None,
-    ) -> dict | None:
-        if idem_key is None or not idempotency_cache.enabled:
-            return None
-        bearer_tok = creds.credentials if creds is not None else "_anon"
-        return idempotency_cache.get(bearer_tok, idem_key)
+    def _bearer_of(creds: HTTPAuthorizationCredentials | None) -> str:
+        return creds.credentials if creds is not None else "_anon"
 
-    def _idempotency_store(
+    @contextmanager
+    def _idempotency_guard(
         creds: HTTPAuthorizationCredentials | None,
         idem_key: str | None,
+        fingerprint: str,
+    ):
+        """Critical section for idempotent send.
+
+        - ``idem_key is None`` or cache disabled: yields ``None``, no locking.
+        - Cache hit with matching fingerprint: yields the cached response dict.
+        - Cache hit with different fingerprint: raises HTTP 409.
+        - Cache miss: yields ``None`` while holding a per-key lock so that any
+          concurrent caller with the same key waits until this handler stores
+          its result (NEW-V-3).
+
+        Caller is expected to call ``_idempotency_remember`` inside the with
+        block on cache-miss so that storage happens while the lock is held.
+        """
+        if idem_key is None or not idempotency_cache.enabled:
+            yield None
+            return
+        bearer_tok = _bearer_of(creds)
+        lock = idempotency_cache.get_lock(bearer_tok, idem_key)
+        lock.acquire()
+        try:
+            existing = idempotency_cache.get(bearer_tok, idem_key)
+            if existing is not None:
+                if not hmac.compare_digest(
+                    existing["fingerprint"], fingerprint
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "Idempotency-Key was previously used with a "
+                            "different request body"
+                        ),
+                    )
+                yield existing["response"]
+            else:
+                yield None
+        finally:
+            lock.release()
+
+    def _idempotency_remember(
+        creds: HTTPAuthorizationCredentials | None,
+        idem_key: str | None,
+        fingerprint: str,
         result: SendResult,
     ) -> None:
-        if (
-            idem_key is None
-            or not idempotency_cache.enabled
-            or not result.sent
-        ):
-            # Only cache successful sends. Errors (502) should NOT be replayed
-            # — caller may have fixed the issue and want a retry to actually
-            # execute. Accepted/queued (sent=False, status=accepted) is
-            # cached because the work is in flight via webhook.
-            if (
-                idem_key is not None
-                and idempotency_cache.enabled
-                and result.status == "accepted"
-            ):
-                pass  # fall through
-            else:
-                return
-        bearer_tok = creds.credentials if creds is not None else "_anon"
-        # Serialize to a plain dict to avoid storing the Pydantic instance.
+        """Cache a successful or queued result. Failures are NOT cached so
+        the caller can retry after fixing the upstream cause."""
+        if idem_key is None or not idempotency_cache.enabled:
+            return
+        if not (result.sent or result.status == "accepted"):
+            return
         idempotency_cache.put(
-            bearer_tok,
+            _bearer_of(creds),
             idem_key,
+            fingerprint,
             result.model_dump(exclude_none=True),
         )
 
