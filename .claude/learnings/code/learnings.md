@@ -6,6 +6,26 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-verify-2026-05-18-004 (verify-only, post P1 fix)
+
+3 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-004/SUMMARY.md` "New Learnings Captured" 참조.
+
+- **code-L17** [P1]: SSRF 재검증이 retry loop 외부에 위치. retry 간 DNS rebinding 가능. 재검증을 loop 내부로 또는 IP pinning.
+- **code-L18** [P1]: Idempotency cache key 에 body fingerprint 없음. 같은 key 다른 body → 잘못된 응답. body hash 포함 또는 mismatch 시 422.
+- **code-L19** [P1]: Idempotency lookup→process→store 비원자적. 동시 요청 시 중복 발송. atomic set-if-empty 또는 key 별 lock.
+
+Priors 상태 변화:
+- L-SEED-01: 재입증 (영구 active)
+- L-SEED-02: active 유지 (SMTP sender 측 partial 의도)
+- code-L11: **재발** (3 라우트 underscore Depends 누적) — code-L14 와 묶어서 처리 필요
+- code-L12: resolved 유효 (단 NEW retry-gap = code-L17 로 분기)
+- code-L13: active (Linux 검증 미수행)
+- code-L14: **재발** (create_app 6 kwargs 도달, 임계치 초과)
+- code-L16: active (release-gate 영역)
+
+P0 5건: 모두 STABLE 확인.
+3 P1 fix: 구조적 OK, secondary gap 3건 (code-L17/L18/L19) — 모두 surgical fix 가능.
+
 ## 2026-05-18 — gate-code-fix-2026-05-18-003 (P1 surgical fix pass)
 
 3개 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-003/SUMMARY.md` 의 "New Learnings Captured" 참조.
