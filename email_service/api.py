@@ -423,6 +423,7 @@ def create_app(
         background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
+        __: None = Depends(rate_limit),
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
