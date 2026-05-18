@@ -6,6 +6,23 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-fix-2026-05-18-005 (secondary P1 surgical fix)
+
+3 신규 learning + 3 priors RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-005/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **code-L20** [P2]: 캐시 시그니처 변경 시 단위 테스트 fixture 회귀 — keyword-only argument 권장.
+- **code-L21** [P2]: 실패-미캐싱 정책의 트래픽 증폭 가능성 (rate limit 으로 차단되나 monitoring alert 필요).
+- **code-L22** [P1]: per-key lock dict 메모리 — cache eviction 과 동기화로 자연 회수, max_entries 만큼 bounded.
+
+Priors RESOLVED:
+- **code-L17 (SSRF retry-loop 외부 재검증)**: validate_webhook_url 가 for-loop 내부로 이동. Resolved-By: gate-code-fix-2026-05-18-005.
+- **code-L18 (캐시 body fingerprint 부재)**: SHA-256 canonical JSON fingerprint + 409 conflict. Resolved-By: gate-code-fix-2026-05-18-005.
+- **code-L19 (lookup→process→store race)**: per-key threading.Lock + `_idempotency_guard` contextmanager. Resolved-By: gate-code-fix-2026-05-18-005.
+
+Priors STILL ACTIVE (사용자 명시 미해결):
+- L-SEED-02 (SMTP sync sleep): partial 유지 — Phase A 다음 pass.
+- code-L11 / code-L14 (underscore Depends + create_app bloat): 6 kwargs 도달. AppDependencies refactor 다음 pass.
+
 ## 2026-05-18 — gate-code-verify-2026-05-18-004 (verify-only, post P1 fix)
 
 3 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-004/SUMMARY.md` "New Learnings Captured" 참조.
