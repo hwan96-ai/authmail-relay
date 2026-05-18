@@ -361,8 +361,9 @@ class _IdempotencyCache:
                     oldest_key = min(
                         self._store, key=lambda k: self._store[k]["expires"]
                     )
+                    # NEW-V-4 / code-L23: keep the lock; a concurrent holder
+                    # may still own it.
                     self._store.pop(oldest_key, None)
-                    self._key_locks.pop(oldest_key, None)
             self._store[(bearer, key)] = {
                 "expires": t + self._ttl,
                 "fingerprint": fingerprint,
