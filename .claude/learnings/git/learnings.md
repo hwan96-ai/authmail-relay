@@ -1,6 +1,12 @@
 # Release Gate — Compound Learnings
 
-## 2026-05-16 — gate-release-2026-05-16-001 (audit-only, BLOCK verdict)
+> **2026-05-18 — Schema migration**: 이 파일의 항목들은 [docs/process/compound-learning-loop.md §4.2](../../../docs/process/compound-learning-loop.md) 의 11-필드 schema 로 정규화되어 [`.claude/learnings/index.md`](../index.md) 의 Seed Learnings 에 통합되었다.
+>
+> 다음 release gate 시작 시 priors 는 [index.md](../index.md) 의 `Owner Gate: git` 인 항목 (L-SEED-01, -03, -06, -07, -08) 에서 읽는다.
+>
+> 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
+
+## 2026-05-16 — gate-release-2026-05-16-001 (audit-only, BLOCK verdict) [LEGACY FORMAT]
 
 ### L1 — GitHub Actions `@v4` 같은 mutable tag + OIDC publish = 단일 침해점
 - Category: true_positive
