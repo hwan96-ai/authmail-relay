@@ -74,7 +74,8 @@ Next-Session Checklist Item: "이번 diff 에 새 Pydantic 모델 (특히 Reques
 Applies To: email_service/api.py, **/schemas/**, **/models/request*.py
 Owner Gate: code
 Evidence: api.py:51 SendEmailRequest (gate-code-2026-05-16-001/SUMMARY.md P0-3)
-Status: active
+Status: resolved
+Resolved-By: gate-code-fix-2026-05-18-001 (Pydantic max_length on all SendRequest models)
 ```
 
 ### L-SEED-05
