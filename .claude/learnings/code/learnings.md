@@ -1,6 +1,12 @@
 # Code Gate — Compound Learnings
 
-## 2026-05-16 — gate-code-2026-05-16-001 (initial audit, no execution)
+> **2026-05-18 — Schema migration**: 이 파일의 항목들은 [docs/process/compound-learning-loop.md §4.2](../../../docs/process/compound-learning-loop.md) 의 11-필드 schema 로 정규화되어 [`.claude/learnings/index.md`](../index.md) 의 Seed Learnings (L-SEED-01 ~ 08) 에 통합되었다.
+>
+> 이 파일의 free-form 항목 (L1~L8) 은 historical 기록으로 보존. 다음 code gate 시작 시 priors 는 [index.md](../index.md) 의 `Owner Gate: code` 인 항목 (L-SEED-01, -02, -03, -04, -05) 에서 읽는다.
+>
+> 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
+
+## 2026-05-16 — gate-code-2026-05-16-001 (initial audit, no execution) [LEGACY FORMAT]
 
 ### L1 — BackgroundTasks + 동기 IO 패턴은 P0
 - Category: true_positive
