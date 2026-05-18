@@ -6,6 +6,24 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-release-verify-2026-05-18-004 (final SHIP verify)
+
+1 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-release-verify-2026-05-18-004/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **git-L08** [P2]: 보안/안정성 fix 시리즈는 평균 5-6 verify-fix cycle 필요. fix → secondary surface → 평탄화 패턴. 일정 추정에 cycle 수 반영 필요.
+
+Priors 변경:
+- **code-L24 (평탄화 예측)**: **fully VALIDATED** — 2회 적중 (gate-code-verify-2026-05-18-008 + 본 verify). 미래 fix 시리즈에 신뢰 가능 메타 패턴.
+- **git-L01 (Code Gate GREEN ≠ Release ready)**: VALIDATED 재확인. 4 항목 점검이 본 verify 에서 그대로 GREEN.
+- **git-L06**: RESOLVED 유효 (10× stress 통과).
+- L-SEED-01: 8회차 invocation. 영구.
+
+판정: 🟢 **SHIP** for single-tenant single-worker. P0=0. PR description 3 항목 (maintainer setup + squash merge + Linux verify) 포함 시 PR 머지 + tag push 안전.
+
+**본 프로젝트의 Compound Learning Loop end-to-end 검증 완료**: 6 cycle 만에 5 P0 (code) + 4 P1 tier + 3 release-side P0 + 1 test infra → all resolved. 회귀 0.
+
+다음 단계: PR 직접 생성 (gh pr create) — 본 워크플로 범위 밖.
+
 ## 2026-05-18 — gate-release-verify-2026-05-18-003 (verify-only, SHIP WITH WATCHLIST)
 
 2 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-release-verify-2026-05-18-003/SUMMARY.md` "New Learnings Captured" 참조.
