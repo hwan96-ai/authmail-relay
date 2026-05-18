@@ -89,22 +89,6 @@ def deliver_webhook(
     Webhook failures DO NOT affect the email send result — the email has
     already been sent by the time this is called.
     """
-    # P1 NEW-1: re-validate URL at fetch time to tighten the DNS-rebinding
-    # window. Pydantic validates at request-parse time, but fetch happens
-    # later (BackgroundTask). DNS may have rebound to a private IP in
-    # between. This second check reduces the TOCTOU window from seconds to
-    # ~milliseconds. Full elimination requires IP pinning via httpx transport.
-    try:
-        validate_webhook_url(url)
-    except ValueError as exc:
-        email_webhook_failed_total.inc()
-        logger.error(
-            "Webhook URL rejected at fetch time (possible DNS rebinding): %s",
-            exc,
-            extra={"message_id": payload.get("message_id")},
-        )
-        return False
-
     body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     # P1 webhook HMAC replay: emit a server-side timestamp and a V2 signature
     # covering "<timestamp>.<body>" so receivers can enforce a freshness
