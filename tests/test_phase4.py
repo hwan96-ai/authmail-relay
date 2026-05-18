@@ -260,7 +260,9 @@ def test_message_id_stable_across_retries():
 # ---------------------------------------------------------------------------
 # 4.5/4.6/4.7 Webhook delivery
 # ---------------------------------------------------------------------------
-def test_deliver_webhook_success_first_try():
+def test_deliver_webhook_success_first_try(monkeypatch):
+    # P1 NEW-1: fetch-time SSRF re-validation runs. Allow fake 'hook' host.
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     transport = httpx.MockTransport(lambda req: httpx.Response(200))
     client = httpx.Client(transport=transport)
     payload = {"message_id": "<m1>", "status": "delivered"}
@@ -269,6 +271,7 @@ def test_deliver_webhook_success_first_try():
 
 
 def test_deliver_webhook_retries_then_succeeds(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     calls = {"n": 0}
 
     def handler(req: httpx.Request) -> httpx.Response:
