@@ -157,3 +157,4 @@ Status: active
 | 2026-05-16 | git | gate-release-2026-05-16-001 | 0 (seed 없던 시점) | 10 | — | [link](../workflow/gate-release-2026-05-16-001/SUMMARY.md) |
 | 2026-05-18 | meta | workflow-improvement | — | 8 seed normalized | — | (이 변경) |
 | 2026-05-18 | code | gate-code-fix-2026-05-18-001 | 5 (L-SEED-01,-02,-03,-04,-05) | 3 (code-L09,-L10,-L11) | 0 | [link](../workflow/gate-code-fix-2026-05-18-001/SUMMARY.md) — 4 P0 resolved, 1 partial (L-SEED-02) |
+| 2026-05-18 | code | gate-code-verify-2026-05-18-002 | 8 (all priors) | 2 (code-L12,-L13) | 1 (L-SEED-01 재입증) | [link](../workflow/gate-code-verify-2026-05-18-002/SUMMARY.md) — verify-only, 5 P0 결과 확인, 2 신규 P1 (SSRF 잔여) |
