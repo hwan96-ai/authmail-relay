@@ -58,15 +58,25 @@ def _no_crlf(value: str) -> str:
     return value
 
 
+def _validate_webhook_field(v: str | None) -> str | None:
+    """P0-2: SSRF defense. Run only when a URL is provided."""
+    if v is None:
+        return v
+    try:
+        return validate_webhook_url(v)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 class SendEmailRequest(BaseModel):
-    to: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
-    html_body: str = Field(min_length=1)
-    text_body: str | None = None
-    cc: list[str] | None = None
-    bcc: list[str] | None = None
-    webhook_url: str | None = None
-    webhook_secret: str | None = None
+    to: str = Field(min_length=1, max_length=320)  # RFC 5321 max email length
+    subject: str = Field(min_length=1, max_length=MAX_SUBJECT_LEN)
+    html_body: str = Field(min_length=1, max_length=MAX_BODY_LEN)
+    text_body: str | None = Field(default=None, max_length=MAX_BODY_LEN)
+    cc: list[str] | None = Field(default=None, max_length=MAX_RECIPIENTS)
+    bcc: list[str] | None = Field(default=None, max_length=MAX_RECIPIENTS)
+    webhook_url: str | None = Field(default=None, max_length=MAX_URL_LEN)
+    webhook_secret: str | None = Field(default=None, max_length=MAX_SECRET_LEN)
 
     @field_validator("to", "subject")
     @classmethod
@@ -82,31 +92,46 @@ class SendEmailRequest(BaseModel):
             _no_crlf(item)
         return v
 
+    @field_validator("webhook_url")
+    @classmethod
+    def _validate_webhook_url_safe(cls, v: str | None) -> str | None:
+        return _validate_webhook_field(v)
+
 
 class SendMagicLinkRequest(BaseModel):
-    to: str = Field(min_length=1)
-    user_name: str = Field(min_length=1)
-    token: str = Field(min_length=1)
-    webhook_url: str | None = None
-    webhook_secret: str | None = None
+    to: str = Field(min_length=1, max_length=320)
+    user_name: str = Field(min_length=1, max_length=MAX_USER_NAME_LEN)
+    token: str = Field(min_length=1, max_length=MAX_TOKEN_LEN)
+    webhook_url: str | None = Field(default=None, max_length=MAX_URL_LEN)
+    webhook_secret: str | None = Field(default=None, max_length=MAX_SECRET_LEN)
 
     @field_validator("to")
     @classmethod
     def _reject_crlf(cls, v: str) -> str:
         return _no_crlf(v)
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _validate_webhook_url_safe(cls, v: str | None) -> str | None:
+        return _validate_webhook_field(v)
 
 
 class SendOTPRequest(BaseModel):
-    to: str = Field(min_length=1)
-    user_name: str = Field(min_length=1)
-    code: str = Field(min_length=1)
-    webhook_url: str | None = None
-    webhook_secret: str | None = None
+    to: str = Field(min_length=1, max_length=320)
+    user_name: str = Field(min_length=1, max_length=MAX_USER_NAME_LEN)
+    code: str = Field(min_length=1, max_length=MAX_CODE_LEN)
+    webhook_url: str | None = Field(default=None, max_length=MAX_URL_LEN)
+    webhook_secret: str | None = Field(default=None, max_length=MAX_SECRET_LEN)
 
     @field_validator("to")
     @classmethod
     def _reject_crlf(cls, v: str) -> str:
         return _no_crlf(v)
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _validate_webhook_url_safe(cls, v: str | None) -> str | None:
+        return _validate_webhook_field(v)
 
 
 class SendResult(BaseModel):
