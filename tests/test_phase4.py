@@ -353,6 +353,9 @@ def test_api_send_with_webhook_returns_accepted(monkeypatch):
         return True
 
     monkeypatch.setattr("email_service.api.deliver_webhook", fake_deliver)
+    # P0-2: SSRF validator runs at Pydantic parse time. Allow 'hook' to bypass
+    # DNS resolution for this test fixture.
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     app = create_app(sender=fake_sender, api_key="k")
     client = TestClient(app)
     resp = client.post(
