@@ -358,3 +358,286 @@ class TestP1C_WebhookReplayDefense:
         assert SIGNATURE_HEADER_V2.lower() not in captured["headers"]
         # Timestamp header is always emitted (anti-replay relies on it).
         assert TIMESTAMP_HEADER.lower() in captured["headers"]
+
+
+# ============================================================================
+# NEW-V-1. SSRF re-validation across retries — defeats inter-retry DNS rebind.
+# ============================================================================
+class TestNewV1_PerRetrySSRFRevalidation:
+    def test_ssrf_revalidate_between_retries(self, monkeypatch):
+        """First DNS resolution returns a public IP (validator passes →
+        httpx returns 503). Second resolution returns 127.0.0.1 (private)
+        → second attempt MUST be blocked before httpx is invoked."""
+        import socket
+        # Resolver state: 1st call public, 2nd+ loopback.
+        call_count = {"n": 0}
+
+        def rebinding_resolver(host, port):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return [(socket.AF_INET, None, None, "",
+                         ("93.184.216.34", 0))]  # example.com public IP
+            return [(socket.AF_INET, None, None, "", ("127.0.0.1", 0))]
+
+        monkeypatch.setattr(
+            "email_service.url_validation.socket.getaddrinfo",
+            rebinding_resolver,
+        )
+        # httpx returns 503 on first POST, forcing a retry. Second attempt
+        # should NEVER reach httpx because re-validate blocks.
+        http_calls = {"n": 0}
+
+        def transport_handler(req):
+            http_calls["n"] += 1
+            return httpx.Response(503)
+
+        client = httpx.Client(transport=httpx.MockTransport(transport_handler))
+        with patch("email_service.webhooks.time.sleep"):
+            result = deliver_webhook(
+                "http://example.com/hook",
+                {"message_id": "<m>"},
+                secret=None,
+                client=client,
+                max_retries=3,
+            )
+        assert result is False
+        # 1 attempt succeeded validation, hit httpx (503). 2nd attempt
+        # blocked at re-validation, no httpx call.
+        assert http_calls["n"] == 1, (
+            f"expected exactly 1 httpx attempt before rebind block, "
+            f"got {http_calls['n']}"
+        )
+        # Validator called at least twice (once per retry attempt that
+        # reached the validation step).
+        assert call_count["n"] >= 2
+
+    def test_repeated_failures_revalidate_each_time(self, monkeypatch):
+        """Even with no rebind, validator runs once per retry attempt."""
+        monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
+        validate_calls = {"n": 0}
+        import email_service.webhooks as webhooks_mod
+        original = webhooks_mod.validate_webhook_url
+
+        def counting_validator(url, **kw):
+            validate_calls["n"] += 1
+            return original(url, **kw)
+
+        monkeypatch.setattr(webhooks_mod, "validate_webhook_url",
+                            counting_validator)
+
+        client = httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(500))
+        )
+        with patch("email_service.webhooks.time.sleep"):
+            deliver_webhook(
+                "http://hook/x",
+                {"message_id": "<m>"},
+                secret=None,
+                client=client,
+                max_retries=3,
+            )
+        assert validate_calls["n"] == 3, (
+            f"validator should run once per attempt, got {validate_calls['n']}"
+        )
+
+
+# ============================================================================
+# NEW-V-2. Idempotency body fingerprint enforcement.
+# ============================================================================
+class TestNewV2_IdempotencyBodyFingerprint:
+    @staticmethod
+    def _sender_ok(message_id: str = "<a@h>") -> MagicMock:
+        s = MagicMock()
+        s.send.return_value = SendResult(sent=True, message_id=message_id)
+        return s
+
+    def _app(self, sender, cache=None):
+        return create_app(
+            sender=sender,
+            api_key="k",
+            otp=MagicMock(spec=OTPNotifier),
+            idempotency_cache=cache,
+            rate_limiter=_SlidingWindowLimiter(
+                max_requests=1000, window_seconds=60.0
+            ),
+        )
+
+    def test_idempotency_same_body_same_key_cached(self):
+        """Same key + same body → identical response, sender called once."""
+        sender = self._sender_ok("<msg-1@h>")
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        client = TestClient(self._app(sender, cache))
+
+        body = {"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"}
+        headers = {"Authorization": "Bearer k", "Idempotency-Key": "K"}
+
+        r1 = client.post("/send", headers=headers, json=body)
+        r2 = client.post("/send", headers=headers, json=body)
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r1.json() == r2.json()
+        assert sender.send.call_count == 1, (
+            "same body + same key must hit cache; sender called only once"
+        )
+
+    def test_idempotency_different_body_same_key_rejected(self):
+        """Same key + different body → 409 Conflict, sender called only
+        for the FIRST (legitimate) request."""
+        sender = self._sender_ok("<msg-1@h>")
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        client = TestClient(self._app(sender, cache))
+
+        body_a = {"to": "u@t.com", "subject": "S-A", "html_body": "<p>A</p>"}
+        body_b = {"to": "u@t.com", "subject": "S-B", "html_body": "<p>B</p>"}
+        headers = {"Authorization": "Bearer k", "Idempotency-Key": "K"}
+
+        r1 = client.post("/send", headers=headers, json=body_a)
+        r2 = client.post("/send", headers=headers, json=body_b)
+
+        assert r1.status_code == 200
+        assert r2.status_code == 409
+        assert "different request body" in r2.text
+        assert sender.send.call_count == 1, (
+            "second (mismatched) request must not invoke sender"
+        )
+
+    def test_idempotency_different_key_different_body_both_process(self):
+        sender = self._sender_ok()
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        client = TestClient(self._app(sender, cache))
+        body_a = {"to": "u@t.com", "subject": "A", "html_body": "<p>A</p>"}
+        body_b = {"to": "u@t.com", "subject": "B", "html_body": "<p>B</p>"}
+
+        r1 = client.post(
+            "/send",
+            headers={"Authorization": "Bearer k", "Idempotency-Key": "K1"},
+            json=body_a,
+        )
+        r2 = client.post(
+            "/send",
+            headers={"Authorization": "Bearer k", "Idempotency-Key": "K2"},
+            json=body_b,
+        )
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert sender.send.call_count == 2
+
+
+# ============================================================================
+# NEW-V-3. Idempotency concurrency — single execution per key.
+# ============================================================================
+class TestNewV3_IdempotencyConcurrency:
+    def test_idempotency_concurrent_requests_single_execution(self):
+        """10 concurrent requests with the same key + same body must
+        result in EXACTLY ONE sender.send invocation."""
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+
+        # Sender that holds briefly so the race window is real, then
+        # returns a single canonical SendResult.
+        send_started = threading.Event()
+        proceed = threading.Event()
+
+        def slow_send(**kwargs):
+            # First caller blocks until released; concurrent callers should
+            # be waiting on the per-key lock and never reach this.
+            send_started.set()
+            proceed.wait(timeout=2.0)
+            return SendResult(sent=True, message_id="<once@h>")
+
+        sender = MagicMock()
+        sender.send.side_effect = slow_send
+
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        app = create_app(
+            sender=sender,
+            api_key="k",
+            otp=MagicMock(spec=OTPNotifier),
+            idempotency_cache=cache,
+            rate_limiter=_SlidingWindowLimiter(
+                max_requests=10_000, window_seconds=60.0
+            ),
+        )
+        client = TestClient(app)
+        body = {"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"}
+        headers = {"Authorization": "Bearer k", "Idempotency-Key": "K"}
+
+        def post():
+            return client.post("/send", headers=headers, json=body)
+
+        results = []
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            futures = [pool.submit(post) for _ in range(10)]
+            # Let the first sender call commit before releasing.
+            send_started.wait(timeout=2.0)
+            proceed.set()
+            for f in futures:
+                results.append(f.result(timeout=5.0))
+
+        statuses = [r.status_code for r in results]
+        assert statuses.count(200) == 10, (
+            f"expected all 10 to return 200, got {statuses}"
+        )
+        # All bodies identical (one canonical response from the single
+        # invocation, replayed via cache to the other 9).
+        bodies = [r.json() for r in results]
+        assert all(b == bodies[0] for b in bodies)
+        assert sender.send.call_count == 1, (
+            f"expected exactly one sender.send invocation, got "
+            f"{sender.send.call_count}"
+        )
+
+    def test_different_keys_run_in_parallel(self):
+        """Two different keys must NOT block each other — second call
+        does not have to wait for first."""
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+
+        in_flight = threading.Semaphore(0)
+        proceed = threading.Event()
+
+        def gated_send(**kwargs):
+            in_flight.release()
+            proceed.wait(timeout=2.0)
+            return SendResult(sent=True, message_id="<x@h>")
+
+        sender = MagicMock()
+        sender.send.side_effect = gated_send
+
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        app = create_app(
+            sender=sender,
+            api_key="k",
+            otp=MagicMock(spec=OTPNotifier),
+            idempotency_cache=cache,
+            rate_limiter=_SlidingWindowLimiter(
+                max_requests=10_000, window_seconds=60.0
+            ),
+        )
+        client = TestClient(app)
+        body = {"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"}
+
+        def post(key):
+            return client.post(
+                "/send",
+                headers={
+                    "Authorization": "Bearer k", "Idempotency-Key": key,
+                },
+                json=body,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f1 = pool.submit(post, "K1")
+            f2 = pool.submit(post, "K2")
+            # Both must reach sender (in parallel) before proceed is set.
+            # If they were serialized, only one would have entered.
+            assert in_flight.acquire(timeout=2.0)
+            assert in_flight.acquire(timeout=2.0)
+            proceed.set()
+            r1 = f1.result(timeout=5.0)
+            r2 = f2.result(timeout=5.0)
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert sender.send.call_count == 2
