@@ -772,6 +772,7 @@ class TestNewV4_LockEvictionRace:
         waiter blocks on the per-key lock and receives the cached
         response after the first completes.
         """
+        from concurrent.futures import ThreadPoolExecutor
         import threading
 
         first_in_send = threading.Event()
