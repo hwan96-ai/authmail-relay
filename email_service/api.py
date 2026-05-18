@@ -331,6 +331,23 @@ def create_app(
                 status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key"
             )
 
+    def rate_limit(
+        creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    ) -> None:
+        """P0-4: cap requests per API key to protect SMTP reputation."""
+        if not rate_limiter.enabled:
+            return
+        # Bucket by bearer token (single shared key today, but works correctly
+        # when multi-key support is added later).
+        key = creds.credentials if creds is not None else "_anon"
+        allowed, retry_after = rate_limiter.check(key)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(int(retry_after) or 1)},
+            )
+
     @app.get(
         "/health",
         summary="Health check",
