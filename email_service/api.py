@@ -330,8 +330,10 @@ class _IdempotencyCache:
             if entry is None:
                 return None
             if entry["expires"] <= t:
+                # NEW-V-4 / code-L23: pop the store entry but KEEP the lock —
+                # an in-flight holder may still own it. See _evict_expired_locked
+                # for the rationale.
                 self._store.pop((bearer, key), None)
-                self._key_locks.pop((bearer, key), None)
                 return None
             # Return the entry (caller reads fingerprint + response).
             return {
