@@ -774,6 +774,7 @@ class TestNewV4_LockEvictionRace:
         """
         from concurrent.futures import ThreadPoolExecutor
         import threading
+        import time as _time
 
         first_in_send = threading.Event()
         release_first = threading.Event()
