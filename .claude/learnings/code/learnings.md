@@ -6,6 +6,20 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-verify-2026-05-18-006 (verify-only, post secondary P1 fix)
+
+2 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-006/SUMMARY.md` "New Learnings Captured" 참조.
+
+- **code-L23** [P1]: Per-key lock + TTL cache 의 lifecycle 결합. expired entry pop 시 lock 도 pop → in-flight holder 가 hold 한 채 dict 에서 사라짐 → 후속 caller 가 새 lock 생성 → 동시 처리 가능. **NEW-V-4 race**. surgical fix: lock pop 제거, 별도 lifecycle.
+- **code-L24** [P2, meta]: Fix pass → verify pass 사이클이 평균 1 신규 secondary 결함 produce 한다는 패턴. 새 추상화 (캐시/락/CM) 자체의 edge case 가 다음 verify 의 발견 영역. 1-2 cycle 후 평탄화. — Compound Learning Loop 자체의 효용 + 정당성 재입증.
+
+Priors 상태 변경:
+- code-L17/L18/L19: resolved 유효성 확인. **단 code-L19 fix 가 code-L23 spawn** (1-step regression 패턴, code-L24 의 인스턴스).
+- L-SEED-01: 4회차 재입증 (영구 active).
+- 나머지 priors: 변경 없음 (active deferred).
+
+P0 5건 + P1 1차/secondary: 모두 STABLE.
+
 ## 2026-05-18 — gate-code-fix-2026-05-18-005 (secondary P1 surgical fix)
 
 3 신규 learning + 3 priors RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-005/SUMMARY.md` 의 "New Learnings Captured" 참조.
