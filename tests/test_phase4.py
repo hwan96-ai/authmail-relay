@@ -294,7 +294,8 @@ def test_deliver_webhook_retries_then_succeeds(monkeypatch):
     assert mock_sleep.call_count == 1
 
 
-def test_deliver_webhook_exhausts_retries():
+def test_deliver_webhook_exhausts_retries(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     transport = httpx.MockTransport(lambda req: httpx.Response(500))
     client = httpx.Client(transport=transport)
     with patch("email_service.webhooks.time.sleep"):
@@ -308,7 +309,8 @@ def test_deliver_webhook_exhausts_retries():
     assert ok is False
 
 
-def test_deliver_webhook_signs_with_hmac():
+def test_deliver_webhook_signs_with_hmac(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     received = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
