@@ -1,13 +1,22 @@
 name: release
 
-# Publish to PyPI when a `v*` tag is pushed (e.g. v0.2.0).
+# Publish to PyPI when a `v*` tag is pushed (e.g. v0.3.1).
 #
-# TODO (one-time, manual): before the first run, the maintainer must:
+# Required maintainer setup (one-time):
 #   1. Register the `email-service` project name on PyPI.
 #   2. Configure a Trusted Publisher mapping under "Publishing" for this
 #      GitHub repo + the `release` workflow + `pypi` environment.
 #      Docs: https://docs.pypi.org/trusted-publishers/
-# Once Trusted Publishers is set up, no API token / secret is needed.
+#   3. (Required for CRIT-3 mitigation) In repo Settings → Environments →
+#      `pypi`: enable "Required reviewers" and add at least one approver.
+#      Without this, the `publish` job will proceed without human gating.
+#
+# Security notes (CRIT-2 / git-L01):
+#   - All third-party actions are pinned to a commit SHA. Do NOT replace
+#     these with mutable tags (`@v4`, `@main`, ...). When upgrading, use
+#     `gh api repos/{owner}/{repo}/git/refs/tags/{tag} --jq .object.sha`
+#     to obtain the new SHA and update the comment line.
+#   - Dependabot is recommended for SHA-based updates.
 
 on:
   push:
@@ -15,20 +24,20 @@ on:
       - "v*"
 
 jobs:
-  build-and-publish:
-    name: Build sdist + wheel and publish to PyPI
+  # Stage 1: build sdist + wheel and run a minimal smoke test against the
+  # built wheel BEFORE we ever touch PyPI. Failures here block publish.
+  build-and-smoke:
+    name: Build sdist + wheel and run smoke test
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/email-service
     permissions:
-      # id-token write is required for PyPI Trusted Publisher OIDC exchange.
-      id-token: write
+      # Read-only — this job MUST NOT have id-token: write.
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - uses: actions/setup-python@v5
+      # actions/setup-python v5.3.0
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: "3.12"
 
@@ -38,5 +47,71 @@ jobs:
       - name: Build sdist and wheel
         run: python -m build
 
+      - name: Smoke install built wheel
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*.whl
+
+      - name: Smoke import + version check
+        run: |
+          set -euo pipefail
+          /tmp/smoke/bin/python -c "
+          import email_service
+          from email_service.sender import SmtpSender, SmtpConfig, SendResult
+          from email_service.notifiers import MagicLinkNotifier, OTPNotifier
+          assert email_service.__version__, 'version missing'
+          print('OK', email_service.__version__)
+          "
+
+      - name: Verify tag matches package version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"          # e.g. v0.3.1
+          TAG_VER="${TAG#v}"                # e.g. 0.3.1
+          PKG_VER=$(/tmp/smoke/bin/python -c "import email_service; print(email_service.__version__)")
+          echo "tag=$TAG_VER pkg=$PKG_VER"
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::Tag $TAG_VER does not match package version $PKG_VER"
+            exit 1
+          fi
+
+      # actions/upload-artifact v4.4.3
+      - name: Upload built artifacts for publish job
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Stage 2: publish to PyPI. Gated by:
+  #   - successful build-and-smoke (`needs:` dependency)
+  #   - the `pypi` GitHub Environment (configure "Required reviewers" in
+  #     repo settings to enforce manual approval per CRIT-3 mitigation)
+  publish:
+    name: Publish to PyPI
+    needs: build-and-smoke
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/email-service
+    permissions:
+      # id-token write is required for PyPI Trusted Publisher OIDC exchange.
+      # Kept isolated to THIS job so the build-and-smoke job runs with
+      # contents:read only.
+      id-token: write
+      contents: read
+    steps:
+      # actions/download-artifact v4.1.8
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: dist
+          path: dist
+
+      # pypa/gh-action-pypi-publish v1.12.4
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7f25271a4aa483500f742f9492b2ab5648d61011
+        with:
+          packages-dir: dist
