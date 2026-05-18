@@ -2,6 +2,40 @@
 
 All notable changes documented here. Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Security and reliability hardening. **No breaking changes to the existing response schema** — additive only. SDK callers do NOT need code changes.
+
+### Security (P0)
+
+- **SSRF defense on `webhook_url`** (CVE-class). Pydantic field validation rejects non-http(s) schemes, IP literals (loopback/link-local/private/multicast/reserved), and hostnames that resolve to those addresses. Re-validates on every retry attempt (defeats inter-retry DNS rebinding). New env vars: `WEBHOOK_ALLOW_HOSTS` (allowlist), `WEBHOOK_ALLOW_LOOPBACK` (test-only).
+- **Request size caps** on `subject` (≤998 chars, RFC 5322), `html_body`/`text_body` (≤10 MB each), `cc`/`bcc` (≤100 each), `Idempotency-Key` (≤128). Returns 422 on overflow.
+- **Per-bearer rate limit** on `/send*` endpoints. New env var `API_RATE_LIMIT_PER_MINUTE` (default 60). Returns 429 with `Retry-After` header. **In-memory, per-process** — see Deployment notes for multi-worker caveat.
+- **Bounded retry backoff** on webhook delivery. Was `(1, 10, 60)` = 71 s max; now `(1, 2, 5)` with ±25% jitter = ≤8 s. Prevents threadpool starvation from background tasks.
+- **`SMTPServerDisconnected` phase-aware retry**. Post-`sendmail()` disconnect is treated as delivered (no retry → no duplicate send). Mid-`sendmail()` disconnect returns new non-retriable error `ERR_SMTP_DISCONNECT_UNCERTAIN`. See `docs/runbooks/smtp-disconnect-uncertain.md`.
+
+### Security (P1)
+
+- **HTTP idempotency** via `Idempotency-Key` header. Body fingerprint (SHA-256 of canonical request JSON) prevents same-key + different-body collisions — returns 409 on mismatch. Per-key locking prevents concurrent duplicate execution. In-memory TTL cache. New env var `API_IDEMPOTENCY_TTL_SECONDS` (default 86400).
+- **Webhook HMAC V2 signature** for replay defense. New headers `X-Email-Service-Signature-V2` (HMAC over `"<timestamp>.<body>"`) and `X-Email-Service-Timestamp` (Unix epoch). V1 (`X-Email-Service-Signature`, body only) preserved for backward compat. **V1 receivers remain vulnerable to indefinite replay** — migrate to V2 (verify timestamp within ±5 min + V2 signature). V1 will be removed in a future major version.
+
+### Release pipeline
+
+- `release.yml`: all third-party actions pinned to commit SHA (was mutable tags). New `build-and-smoke` job builds the wheel, installs into a clean venv, verifies imports + version, and confirms the pushed tag matches `pyproject.toml`. `publish` job depends on `build-and-smoke` and uses the `pypi` GitHub Environment (configure **Required reviewers** in repo settings for manual approval).
+- `email_service.__version__` is now sourced from `importlib.metadata` (single source of truth = `pyproject.toml`). `FastAPI(version=...)` and the OpenAPI document follow.
+
+### Operational documentation
+
+- `docs/runbooks/`: 5 runbooks for SMTP outage, webhook outage, `API_KEY` rotation, PyPI yank/hotfix, and `smtp_disconnect_uncertain` triage.
+- README: new Deployment section (single vs multi worker, reverse-proxy body cap, env-var table, V1 deprecation notice).
+
+### Known limitations (tracked, not release blockers for single-tenant)
+
+- `SmtpSender` retry uses synchronous `time.sleep` (max 31 s budget). Acceptable for single-worker / low-throughput deployments; consider `aiosmtplib` migration for high concurrency.
+- In-memory rate limit + idempotency cache + per-key locks → per-process state. Multi-worker uvicorn → caps multiply by worker count. Use single worker or replace with Redis-backed store for strict cross-worker semantics.
+- `webhook_url` validator runs in the BackgroundTask; sub-attempt DNS-rebinding window (~ms between validate and httpx connect) is still theoretically open. Full elimination requires IP pinning via httpx transport.
+- Linux glibc `inet_aton`-compatible numeric host forms (e.g., `http://2130706433/`) were not verified in this release window. Behaviour on Windows getaddrinfo: rejected. Linux production deployment should run a one-time check (`docker run --rm python:3.12-slim python -c "import socket; print(socket.getaddrinfo('2130706433', None))"`).
+
 ## [0.3.0] - 2026-05-15
 
 > Renamed from the pre-allocated `0.2.0` tag (which already pointed at an unreleased commit). Content unchanged from the 5-phase refactor work — this is the first published release after that work.

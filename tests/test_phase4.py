@@ -76,7 +76,13 @@ def test_capture_dir_unset_uses_smtp(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # 4.1 + 4.2 Retry with exponential backoff + metrics
 # ---------------------------------------------------------------------------
-def test_retry_succeeds_after_transient_disconnect(monkeypatch):
+def test_retry_succeeds_after_transient_timeout(monkeypatch):
+    """A truly transient failure (timeout) still retries.
+
+    Note: SMTPServerDisconnected mid-sendmail is now non-retriable to prevent
+    double-send (P0-5). See ``test_disconnect_mid_sendmail_does_not_retry`` and
+    ``test_disconnect_after_sendmail_treated_as_delivered`` below.
+    """
     monkeypatch.delenv("EMAIL_TEST_CAPTURE_DIR", raising=False)
     sender = SmtpSender(
         SmtpConfig(host="smtp.test.com", port=587, user="t@t.com", password="pw"),
@@ -92,8 +98,8 @@ def test_retry_succeeds_after_transient_disconnect(monkeypatch):
         server.__exit__.return_value = False
         server.has_extn.return_value = True
         if call_count["n"] == 1:
-            # First connect: disconnect mid-flow.
-            server.sendmail.side_effect = smtplib.SMTPServerDisconnected("boom")
+            # Transient I/O timeout — still retriable.
+            server.sendmail.side_effect = TimeoutError("slow server")
         else:
             server.sendmail.return_value = {}
         return server
@@ -217,6 +223,8 @@ def test_no_retry_on_partial_refusal():
 
 
 def test_message_id_stable_across_retries():
+    """Message-ID does not regenerate on retry. Use a retriable failure
+    (transient 421) — SMTPServerDisconnected is now non-retriable per P0-5."""
     sender = SmtpSender(
         SmtpConfig(host="smtp.test.com", port=587, user="t@t.com", password="pw"),
         max_retries=2,
@@ -236,7 +244,7 @@ def test_message_id_stable_across_retries():
             msg = email.message_from_string(raw)
             seen_message_ids.append(msg["Message-ID"])
             if counter["n"] == 1:
-                raise smtplib.SMTPServerDisconnected()
+                raise smtplib.SMTPResponseException(421, b"try again")
             return {}
 
         s.sendmail.side_effect = capture_send
@@ -252,7 +260,9 @@ def test_message_id_stable_across_retries():
 # ---------------------------------------------------------------------------
 # 4.5/4.6/4.7 Webhook delivery
 # ---------------------------------------------------------------------------
-def test_deliver_webhook_success_first_try():
+def test_deliver_webhook_success_first_try(monkeypatch):
+    # P1 NEW-1: fetch-time SSRF re-validation runs. Allow fake 'hook' host.
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     transport = httpx.MockTransport(lambda req: httpx.Response(200))
     client = httpx.Client(transport=transport)
     payload = {"message_id": "<m1>", "status": "delivered"}
@@ -261,6 +271,7 @@ def test_deliver_webhook_success_first_try():
 
 
 def test_deliver_webhook_retries_then_succeeds(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     calls = {"n": 0}
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -283,7 +294,8 @@ def test_deliver_webhook_retries_then_succeeds(monkeypatch):
     assert mock_sleep.call_count == 1
 
 
-def test_deliver_webhook_exhausts_retries():
+def test_deliver_webhook_exhausts_retries(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     transport = httpx.MockTransport(lambda req: httpx.Response(500))
     client = httpx.Client(transport=transport)
     with patch("email_service.webhooks.time.sleep"):
@@ -297,7 +309,8 @@ def test_deliver_webhook_exhausts_retries():
     assert ok is False
 
 
-def test_deliver_webhook_signs_with_hmac():
+def test_deliver_webhook_signs_with_hmac(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     received = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -345,6 +358,9 @@ def test_api_send_with_webhook_returns_accepted(monkeypatch):
         return True
 
     monkeypatch.setattr("email_service.api.deliver_webhook", fake_deliver)
+    # P0-2: SSRF validator runs at Pydantic parse time. Allow 'hook' to bypass
+    # DNS resolution for this test fixture.
+    monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     app = create_app(sender=fake_sender, api_key="k")
     client = TestClient(app)
     resp = client.post(

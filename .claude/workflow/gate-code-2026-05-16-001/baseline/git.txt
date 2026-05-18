@@ -1,0 +1,10 @@
+fac5183 Merge pull request #3 from hwan96-ai/fix-package-discovery
+7933070 fix(build): scope setuptools package discovery to email_service
+16d07b0 Merge pull request #2 from hwan96-ai/bump-0.3.0
+24a4983 chore: bump to 0.3.0 (v0.2.0 tag conflict)
+aecbbba Merge pull request #1 from hwan96-ai/claude/sad-cannon-1131fe
+1b4355b phase-5: polish — a11y, i18n, async client, examples
+3c3c324 phase-4: retry, test-mode, webhook callback
+d7f6c2d phase-3: observability — metrics, structured logs, debug mode
+214bef6 phase-2: structured errors + semver release
+50de772 phase-1: security & correctness hardening

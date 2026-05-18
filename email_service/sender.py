@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 ERR_CRLF_IN_HEADER = "crlf_in_header"
 ERR_SMTP_AUTH_FAILED = "smtp_auth_failed"
 ERR_SMTP_CONNECTION = "smtp_connection"
+# P0-5: connection died while in the middle of sendmail() — we don't know if
+# the server accepted the message or not. Returning this code marks the send
+# as non-retriable to avoid double-delivery when the message DID arrive.
+ERR_SMTP_DISCONNECT_UNCERTAIN = "smtp_disconnect_uncertain"
 ERR_SMTP_TIMEOUT = "smtp_timeout"
 ERR_SMTP_TRANSIENT = "smtp_transient"
 ERR_RECIPIENT_REFUSED = "recipient_refused"
@@ -302,6 +306,11 @@ class SmtpSender:
     ) -> SendResult:
         start = time.perf_counter()
         email_send_active.inc()
+        # P0-5: track whether sendmail() returned. SMTPServerDisconnected after
+        # this point means the server accepted the message and died on QUIT —
+        # the message was delivered, so retrying would duplicate.
+        sendmail_returned = False
+        sendmail_refused: dict | None = None
         try:
             with smtplib.SMTP(self._cfg.host, self._cfg.port,
                               timeout=self._cfg.timeout) as server:
@@ -345,6 +354,11 @@ class SmtpSender:
                 refused = server.sendmail(
                     self._cfg.from_addr, recipients, msg.as_string()
                 )
+                # P0-5: server accepted DATA (or refused per-recipient). If
+                # the connection drops AFTER this point we know the message
+                # was delivered and must not retry.
+                sendmail_returned = True
+                sendmail_refused = refused
             duration_ms = (time.perf_counter() - start) * 1000.0
             email_send_duration_seconds.observe(duration_ms / 1000.0)
             if refused:
@@ -436,21 +450,67 @@ class SmtpSender:
             )
         except smtplib.SMTPServerDisconnected as exc:
             duration_ms = (time.perf_counter() - start) * 1000.0
+            # P0-5: if sendmail() already returned, the server accepted the
+            # message (or per-recipient refused) before the connection died
+            # during QUIT. Treat as delivered to avoid double-send on retry.
+            if sendmail_returned:
+                refused_list = (
+                    sorted(sendmail_refused) if sendmail_refused else None
+                )
+                logger.info(
+                    "SMTP disconnected after sendmail completed; treating as delivered",
+                    extra=_log_extra(
+                        to,
+                        message_id=message_id,
+                        duration_ms=duration_ms,
+                        request_id=request_id,
+                        attempts=attempt,
+                        refused=refused_list,
+                    ),
+                )
+                if refused_list:
+                    email_send_total.labels(
+                        result="failure", error_code=ERR_RECIPIENT_REFUSED
+                    ).inc()
+                    return SendResult(
+                        sent=False,
+                        error_code=ERR_RECIPIENT_REFUSED,
+                        error_message=(
+                            f"Recipients refused: {refused_list}"
+                        ),
+                        refused=refused_list,
+                        message_id=message_id,
+                        attempts=attempt,
+                        status=STATUS_PARTIAL,
+                    )
+                email_send_total.labels(
+                    result="success", error_code=""
+                ).inc()
+                return SendResult(
+                    sent=True,
+                    message_id=message_id,
+                    attempts=attempt,
+                    status=STATUS_DELIVERED,
+                )
+
+            # Disconnect happened before sendmail() returned: server may or
+            # may not have received DATA. We must NOT retry (would duplicate
+            # if it actually arrived). Non-retriable error code.
             logger.exception(
-                "SMTP server disconnected",
+                "SMTP server disconnected before sendmail completed",
                 extra=_log_extra(
                     to,
                     duration_ms=duration_ms,
-                    error_code=ERR_SMTP_CONNECTION,
+                    error_code=ERR_SMTP_DISCONNECT_UNCERTAIN,
                     request_id=request_id,
                 ),
             )
             email_send_total.labels(
-                result="failure", error_code=ERR_SMTP_CONNECTION
+                result="failure", error_code=ERR_SMTP_DISCONNECT_UNCERTAIN
             ).inc()
             return SendResult(
                 sent=False,
-                error_code=ERR_SMTP_CONNECTION,
+                error_code=ERR_SMTP_DISCONNECT_UNCERTAIN,
                 error_message=str(exc),
                 attempts=attempt,
                 status=STATUS_FAILED,

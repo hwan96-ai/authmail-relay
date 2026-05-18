@@ -3,6 +3,23 @@
 Uses ``httpx`` (already required by the SDK extras) so we do not add a new
 dependency. Retries with bounded backoff. HMAC-SHA256 signs the body when
 a secret is provided so recipients can verify authenticity.
+
+# Replay-attack defense (V2 signature)
+
+In addition to the legacy ``X-Email-Service-Signature`` header (sha256 of the
+body bytes only), this module emits ``X-Email-Service-Signature-V2`` which
+covers ``"<timestamp>.<body>"`` and an ``X-Email-Service-Timestamp`` header
+(integer Unix-epoch seconds).
+
+**Recipients SHOULD migrate to V2:**
+
+1. Read the ``X-Email-Service-Timestamp`` header.
+2. Reject if abs(now - timestamp) > 5 minutes (anti-replay window).
+3. Compute ``hmac_sha256(secret, f"{timestamp}.{body}")`` and compare
+   constant-time with the V2 header digest.
+
+V1 (body-only) remains for backward compatibility but is vulnerable to
+indefinite replay if captured. Plan to remove V1 in a future major version.
 """
 from __future__ import annotations
 
@@ -10,23 +27,47 @@ import hashlib
 import hmac
 import json
 import logging
+import random
 import time
 from typing import Any
 
 import httpx
 
 from email_service.metrics import email_webhook_failed_total
+from email_service.url_validation import validate_webhook_url
 
 logger = logging.getLogger(__name__)
 
 
 SIGNATURE_HEADER = "X-Email-Service-Signature"
-DEFAULT_BACKOFFS: tuple[int, ...] = (1, 10, 60)
+SIGNATURE_HEADER_V2 = "X-Email-Service-Signature-V2"
+TIMESTAMP_HEADER = "X-Email-Service-Timestamp"
+# P0-1 (threadpool starvation): bounded total sleep budget. Previous
+# (1, 10, 60) summed to 71s while running on a sync BackgroundTask, which
+# pinned a starlette threadpool worker per retry. Sum now ≤ 8s before jitter.
+DEFAULT_BACKOFFS: tuple[float, ...] = (1.0, 2.0, 5.0)
 DEFAULT_MAX_RETRIES = 3
+# ±25% jitter to avoid thundering herd against a shared webhook target.
+_JITTER_RATIO = 0.25
+
+
+def _jittered(delay: float) -> float:
+    if delay <= 0:
+        return 0.0
+    spread = delay * _JITTER_RATIO
+    return max(0.0, delay + random.uniform(-spread, spread))
 
 
 def _sign(body: bytes, secret: str) -> str:
+    """V1: signature over body only. Vulnerable to replay if captured."""
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return f"sha256={digest}"
+
+
+def _sign_v2(timestamp: str, body: bytes, secret: str) -> str:
+    """V2: signature over ``"<timestamp>.<body>"`` bytes — anti-replay."""
+    payload = timestamp.encode("ascii") + b"." + body
+    digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 
 
@@ -36,7 +77,7 @@ def deliver_webhook(
     secret: str | None,
     *,
     max_retries: int = DEFAULT_MAX_RETRIES,
-    backoffs: tuple[int, ...] = DEFAULT_BACKOFFS,
+    backoffs: tuple[float, ...] = DEFAULT_BACKOFFS,
     timeout: float = 10.0,
     client: httpx.Client | None = None,
 ) -> bool:
@@ -49,9 +90,17 @@ def deliver_webhook(
     already been sent by the time this is called.
     """
     body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    # P1 webhook HMAC replay: emit a server-side timestamp and a V2 signature
+    # covering "<timestamp>.<body>" so receivers can enforce a freshness
+    # window and reject replays.
+    timestamp = str(int(time.time()))
+    headers = {
+        "Content-Type": "application/json",
+        TIMESTAMP_HEADER: timestamp,
+    }
     if secret:
         headers[SIGNATURE_HEADER] = _sign(body, secret)
+        headers[SIGNATURE_HEADER_V2] = _sign_v2(timestamp, body, secret)
 
     message_id = payload.get("message_id")
     own_client = client is None
@@ -61,6 +110,23 @@ def deliver_webhook(
     try:
         max_total = max(1, int(max_retries))
         for attempt in range(1, max_total + 1):
+            # P1 NEW-V-1: re-validate URL on every attempt to defeat DNS
+            # rebinding ACROSS retries. The validator resolves DNS itself;
+            # if a prior public IP has now rebound to a private/loopback
+            # address, the second attempt is blocked before httpx connects.
+            # Full elimination still requires IP pinning, but this closes
+            # the inter-retry window (was up to ~8s; now ~ms per attempt).
+            try:
+                validate_webhook_url(url)
+            except ValueError as exc:
+                email_webhook_failed_total.inc()
+                logger.error(
+                    "Webhook URL rejected at attempt %d (possible DNS rebinding): %s",
+                    attempt,
+                    exc,
+                    extra={"message_id": message_id, "attempts": attempt},
+                )
+                return False
             try:
                 resp = client.post(url, content=body, headers=headers)
                 if 200 <= resp.status_code < 300:
@@ -92,7 +158,7 @@ def deliver_webhook(
                 )
             if attempt < max_total:
                 idx = min(attempt - 1, len(backoffs) - 1)
-                time.sleep(backoffs[idx])
+                time.sleep(_jittered(float(backoffs[idx])))
         # All attempts failed.
         email_webhook_failed_total.inc()
         logger.error(

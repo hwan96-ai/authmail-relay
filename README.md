@@ -39,6 +39,94 @@
 
 ---
 
+## Deployment
+
+운영 환경 배포 전 반드시 확인할 사항들. 이 섹션을 건너뛰면 본 서비스가 의도한 보안/안정성 보장이 무너질 수 있다.
+
+### 워커 수 (single vs multi)
+
+본 서비스의 다음 상태는 **in-memory, per-process**이다:
+
+- **Rate limit** (`API_RATE_LIMIT_PER_MINUTE`): 워커당 cap. uvicorn workers=N 이면 실제 처리량 = N × cap.
+- **Idempotency cache** (`API_IDEMPOTENCY_TTL_SECONDS`): 워커당 dedup. 같은 `Idempotency-Key` 가 다른 워커에 분산되면 dedup 깨짐.
+- **Per-key concurrency lock**: 워커당 직렬화. 워커 N개면 같은 키가 최대 N회 동시 처리 가능.
+
+권장:
+
+- **단일 워커 + sticky LB**: 가장 단순. `uvicorn email_service --workers 1` 또는 같은 워커로 라우팅하는 LB. 본 서비스가 의도한 정확한 동작.
+- **멀티 워커**: rate-limit / idempotency 정확성이 SLA 일부면 외부 store (Redis 등) 로 교체 필요 — 현재 미지원, P1 향후 항목.
+
+### 본문 크기 제한
+
+Pydantic 의 `max_length` 가 422 거부를 보장하지만, FastAPI 가 요청 본문을 **메모리에 전체 buffer 한 후** Pydantic 을 실행한다. 따라서 100 MB 요청이 들어오면 거부는 되어도 메모리는 일시 점유.
+
+**필수**: 리버스 프록시에서 body cap 설정.
+
+```nginx
+# /etc/nginx/sites-available/email-service
+location / {
+    client_max_body_size 12m;   # 10 MB body cap + 2 MB headers/overhead
+    proxy_pass http://email-service:8000;
+}
+```
+
+uvicorn 자체에는 명시적 body cap 옵션이 없음 — proxy 단에서 차단.
+
+### 환경변수 reference
+
+| 변수 | 필수 | 기본 | 설명 |
+|------|------|------|------|
+| `SMTP_HOST` | ✅ | — | SMTP 호스트 |
+| `SMTP_PORT` | | `587` | SMTP 포트 |
+| `SMTP_USER` | | `""` | SMTP 사용자 (옵션) |
+| `SMTP_PASSWORD` | | `""` | SMTP 비밀번호 (옵션) |
+| `SMTP_FROM` | | `SMTP_USER` | From 헤더 주소 |
+| `SMTP_USE_TLS` | | `true` | STARTTLS 사용 |
+| `API_KEY` | ✅ | — | Bearer 인증 토큰. `openssl rand -hex 32` 권장 |
+| `API_RATE_LIMIT_PER_MINUTE` | | `60` | `/send*` 의 per-bearer 분당 호출 cap. `0` 이면 비활성. |
+| `API_IDEMPOTENCY_TTL_SECONDS` | | `86400` | `Idempotency-Key` 캐시 TTL (초). `0` 이면 비활성. |
+| `WEBHOOK_ALLOW_HOSTS` | | `""` | `webhook_url` SSRF 검증의 hostname allowlist (콤마 구분). 내부 콜백용. |
+| `WEBHOOK_ALLOW_LOOPBACK` | | `false` | `1` 이면 loopback/private IP 허용. **테스트 전용 — production 금지** |
+| `EMAIL_SERVICE_DEBUG` | | `false` | `1` 이면 smtplib 디버그 출력 (**SMTP 비밀번호가 stderr 에 base64 로 출력됨 — production 절대 금지**) |
+| `MAGIC_LINK_BASE_URL` | | unset | 설정 시 `/send/magic-link` 활성화 |
+| `METRICS_ENABLED` | | `false` | `/metrics` 엔드포인트 활성화 |
+| `METRICS_REQUIRE_AUTH` | | `false` | `/metrics` 에 Bearer 인증 강제 |
+| `EMAIL_SERVICE_LOG_FORMAT` | | `text` | `json` 시 구조화 로그 |
+| `EMAIL_TEST_CAPTURE_DIR` | | unset | 설정 시 SMTP 미접속, `.eml` 파일 저장 (테스트용) |
+
+### Webhook signature: V1 → V2 migration
+
+본 서비스는 webhook payload 에 두 가지 서명 헤더를 동시 전송한다:
+
+- `X-Email-Service-Signature` (V1): HMAC-SHA256(secret, body) — **replay 공격에 취약**.
+- `X-Email-Service-Signature-V2`: HMAC-SHA256(secret, `"<timestamp>.<body>"`)
+- `X-Email-Service-Timestamp`: Unix epoch seconds
+
+**V2 채택 권장 (수신자 측 마이그레이션 절차)**:
+
+1. `X-Email-Service-Timestamp` 읽기.
+2. `abs(now - timestamp) > 300` (5분) 이면 거부 — replay window 차단.
+3. `hmac_sha256(secret, f"{timestamp}.{body}")` 를 V2 헤더와 constant-time 비교.
+
+V1 헤더는 **향후 major version 에서 제거 예정**. CHANGELOG 참조.
+
+### Release 자동화 (PyPI)
+
+- 본 저장소의 `release.yml` 은 tag push 시 PyPI 자동 publish.
+- **publish 전 manual approval 필수**: repo Settings → Environments → `pypi` 에서 "Required reviewers" 설정 필수.
+- 모든 GitHub Actions 는 commit SHA 로 핀 (mutable tag 금지).
+- 잘못된 publish 는 yank 만 가능, 버전명 영구 소진. [`docs/runbooks/pypi-yank-hotfix.md`](docs/runbooks/pypi-yank-hotfix.md) 참조.
+
+### 운영 runbook
+
+장애 / 회전 / 핫픽스 절차:
+
+- [`docs/runbooks/smtp-outage.md`](docs/runbooks/smtp-outage.md)
+- [`docs/runbooks/webhook-outage.md`](docs/runbooks/webhook-outage.md)
+- [`docs/runbooks/api-key-rotation.md`](docs/runbooks/api-key-rotation.md)
+- [`docs/runbooks/pypi-yank-hotfix.md`](docs/runbooks/pypi-yank-hotfix.md)
+- [`docs/runbooks/smtp-disconnect-uncertain.md`](docs/runbooks/smtp-disconnect-uncertain.md)
+
 ## Operations
 
 운영 환경에서 발송 성공률·실패 사유·지연을 관측하기 위한 옵트인 기능들이다. 모두 환경변수로 켤 수 있으며, 기본값은 모두 off — 기존 동작과 100% 호환된다.
