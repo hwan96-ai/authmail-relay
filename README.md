@@ -112,8 +112,13 @@ V1 헤더는 **향후 major version 에서 제거 예정**. CHANGELOG 참조.
 
 ### Release 자동화 (PyPI)
 
-- 본 저장소의 `release.yml` 은 tag push 시 PyPI 자동 publish.
-- **publish 전 manual approval 필수**: repo Settings → Environments → `pypi` 에서 "Required reviewers" 설정 필수.
+`release.yml` 은 **2-step manual gate** 모델이다. tag push 만으로는 PyPI 에 publish 되지 않는다.
+
+1. **tag push** → `build-and-smoke` job 만 실행. wheel 빌드 + smoke import + tag/version 일치 검증까지만 수행. PyPI 는 건드리지 않는다.
+2. **Actions → `release` → "Run workflow"** (workflow_dispatch) 에서 publish 할 tag (예: `v0.4.0`) 를 입력하고 수동 실행. 이 dispatch 자체가 사람 승인 게이트다. `build-and-smoke` 가 다시 검증된 뒤 `publish` job 이 PyPI 로 업로드한다.
+
+왜 분리: private repo 에서는 GitHub Environment "Required reviewers" UI 가 플랜에 따라 노출되지 않을 수 있어 `environment: pypi` 게이트만으로는 manual approval 을 보장하기 어렵다. workflow_dispatch 트리거 자체를 사람 행동으로 만들어 이 빈틈을 막는다. Environment Required reviewers 가 활성화돼 있다면 그 위에 추가로 얹히는 defense-in-depth.
+
 - 모든 GitHub Actions 는 commit SHA 로 핀 (mutable tag 금지).
 - 잘못된 publish 는 yank 만 가능, 버전명 영구 소진. [`docs/runbooks/pypi-yank-hotfix.md`](docs/runbooks/pypi-yank-hotfix.md) 참조.
 

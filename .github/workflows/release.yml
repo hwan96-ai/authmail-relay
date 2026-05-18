@@ -1,15 +1,26 @@
 name: release
 
-# Publish to PyPI when a `v*` tag is pushed (e.g. v0.3.1).
+# Trigger model (CRIT-3 mitigation for private repos):
+#   - Tag push (`v*`): runs `build-and-smoke` ONLY. Does NOT publish to PyPI.
+#     Tag push proves the package builds and the tag/version match. Nothing
+#     reaches PyPI without a second, explicit human step.
+#   - `workflow_dispatch`: re-runs `build-and-smoke` against the requested tag
+#     AND runs `publish` to PyPI. This trigger is the manual approval gate.
+#
+# Why split: GitHub Environment "Required reviewers" UI is not available on
+# private repos without the appropriate plan. The `environment: pypi` gate
+# alone cannot guarantee manual approval there. Splitting the triggers makes
+# the workflow_dispatch invocation itself the audited human action.
 #
 # Required maintainer setup (one-time):
 #   1. Register the `email-service` project name on PyPI.
 #   2. Configure a Trusted Publisher mapping under "Publishing" for this
 #      GitHub repo + the `release` workflow + `pypi` environment.
 #      Docs: https://docs.pypi.org/trusted-publishers/
-#   3. (Required for CRIT-3 mitigation) In repo Settings → Environments →
-#      `pypi`: enable "Required reviewers" and add at least one approver.
-#      Without this, the `publish` job will proceed without human gating.
+#   3. (Optional, defense-in-depth) In repo Settings → Environments → `pypi`:
+#      enable "Required reviewers" if your plan exposes it. The workflow
+#      already requires manual dispatch, so this is additive — not the
+#      primary gate.
 #
 # Security notes (CRIT-2 / git-L01):
 #   - All third-party actions are pinned to a commit SHA. Do NOT replace
@@ -22,10 +33,16 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish to PyPI (e.g. v0.4.0). Must already exist on the repo."
+        required: true
+        type: string
 
 jobs:
   # Stage 1: build sdist + wheel and run a minimal smoke test against the
-  # built wheel BEFORE we ever touch PyPI. Failures here block publish.
+  # built wheel. Runs on BOTH triggers. Failures here block any publish.
   build-and-smoke:
     name: Build sdist + wheel and run smoke test
     runs-on: ubuntu-latest
@@ -33,8 +50,25 @@ jobs:
       # Read-only — this job MUST NOT have id-token: write.
       contents: read
     steps:
+      - name: Resolve ref to build
+        id: ref
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF="${{ inputs.tag }}"
+          else
+            REF="${GITHUB_REF##*/}"
+          fi
+          case "$REF" in
+            v*) ;;
+            *) echo "::error::Ref '$REF' does not match v* pattern"; exit 1 ;;
+          esac
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
 
       # actions/setup-python v5.3.0
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
@@ -68,8 +102,8 @@ jobs:
       - name: Verify tag matches package version
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"          # e.g. v0.3.1
-          TAG_VER="${TAG#v}"                # e.g. 0.3.1
+          TAG="${{ steps.ref.outputs.ref }}"   # e.g. v0.4.0
+          TAG_VER="${TAG#v}"                    # e.g. 0.4.0
           PKG_VER=$(/tmp/smoke/bin/python -c "import email_service; print(email_service.__version__)")
           echo "tag=$TAG_VER pkg=$PKG_VER"
           if [ "$TAG_VER" != "$PKG_VER" ]; then
@@ -86,13 +120,12 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Stage 2: publish to PyPI. Gated by:
-  #   - successful build-and-smoke (`needs:` dependency)
-  #   - the `pypi` GitHub Environment (configure "Required reviewers" in
-  #     repo settings to enforce manual approval per CRIT-3 mitigation)
+  # Stage 2: publish to PyPI. ONLY runs on `workflow_dispatch` — never on
+  # tag push. The manual dispatch IS the human approval gate.
   publish:
     name: Publish to PyPI
     needs: build-and-smoke
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: pypi
