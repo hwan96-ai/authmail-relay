@@ -6,6 +6,19 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-verify-2026-05-18-002 (verify-only)
+
+2개 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-code-verify-2026-05-18-002/SUMMARY.md` 의 "New Learnings Captured" 참조.
+
+- **code-L12** [P1]: SSRF validator + DNS rebinding — validator 와 fetcher 사이 시간 갭에서 DNS 결과 변경 가능. transport-level IP binding 또는 re-resolve 필요.
+- **code-L13** [P2]: SSRF validator 가 exotic IP 인코딩 (정수/16진/단축형) 못 잡음. ipaddress.ip_address() 는 RFC 표준만, getaddrinfo/httpx 는 historic 변형 수용. Linux glibc 확인 필요.
+
+Verify 결과 priors 상태:
+- L-SEED-01: ACTIVE (NEW-1 발견으로 재입증)
+- L-SEED-02: ACTIVE (partial, 변경 없음)
+- L-SEED-03,-04,-05: RESOLVED 유효 확인
+- code-L09,-L10,-L11: applied OK, 유지
+
 ## 2026-05-18 — gate-code-fix-2026-05-18-001 (P0 fix implementation pass)
 
 다음 3개 신규 learning 등록. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-001/SUMMARY.md` 의 "New Learnings Captured" 섹션 참조.
