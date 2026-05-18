@@ -666,52 +666,59 @@ def create_app(
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
         idem_key = _check_idempotency_key(idempotency_key)
-        cached = _idempotency_lookup(creds, idem_key)
-        if cached is not None:
-            return SendResult(**cached)
+        fingerprint = _body_fingerprint(req) if idem_key else ""
         rid = getattr(request.state, "request_id", None)
-        if req.webhook_url:
-            def _do_send():
-                return sender.send(
-                    to=req.to,
-                    subject=req.subject,
-                    html_body=req.html_body,
-                    text_body=req.text_body,
-                    cc=req.cc,
-                    bcc=req.bcc,
-                    request_id=rid,
+        with _idempotency_guard(creds, idem_key, fingerprint) as cached:
+            if cached is not None:
+                return SendResult(**cached)
+            if req.webhook_url:
+                def _do_send():
+                    return sender.send(
+                        to=req.to,
+                        subject=req.subject,
+                        html_body=req.html_body,
+                        text_body=req.text_body,
+                        cc=req.cc,
+                        bcc=req.bcc,
+                        request_id=rid,
+                    )
+                background_tasks.add_task(
+                    _run_and_notify, _do_send,
+                    req.webhook_url, req.webhook_secret,
                 )
-            background_tasks.add_task(
-                _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
+                queued = SendResult(
+                    sent=False, status="accepted", message=(
+                        "Send queued; final result will be delivered "
+                        "via webhook"
+                    ),
+                )
+                _idempotency_remember(creds, idem_key, fingerprint, queued)
+                return queued
+            result = sender.send(
+                to=req.to,
+                subject=req.subject,
+                html_body=req.html_body,
+                text_body=req.text_body,
+                cc=req.cc,
+                bcc=req.bcc,
+                request_id=rid,
             )
-            queued = SendResult(
-                sent=False, status="accepted", message=(
-                    "Send queued; final result will be delivered via webhook"
+            if not result.sent:
+                _fail(result)
+            status_val = getattr(result, "status", None)
+            response = SendResult(
+                sent=True,
+                message_id=result.message_id,
+                # Only surface status when it differs from default to preserve
+                # backward-compatible response shape.
+                status=(
+                    status_val
+                    if status_val and status_val != "delivered"
+                    else None
                 ),
             )
-            _idempotency_store(creds, idem_key, queued)
-            return queued
-        result = sender.send(
-            to=req.to,
-            subject=req.subject,
-            html_body=req.html_body,
-            text_body=req.text_body,
-            cc=req.cc,
-            bcc=req.bcc,
-            request_id=rid,
-        )
-        if not result.sent:
-            _fail(result)
-        status_val = getattr(result, "status", None)
-        response = SendResult(
-            sent=True,
-            message_id=result.message_id,
-            # Only surface status when it differs from default to preserve
-            # backward-compatible response shape.
-            status=status_val if status_val and status_val != "delivered" else None,
-        )
-        _idempotency_store(creds, idem_key, response)
-        return response
+            _idempotency_remember(creds, idem_key, fingerprint, response)
+            return response
 
     @app.post(
         "/send/magic-link",
