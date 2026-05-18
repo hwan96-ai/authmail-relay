@@ -635,6 +635,10 @@ def create_app(
         req: SendMagicLinkRequest,
         background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
+        idempotency_key: str | None = Header(
+            default=None, alias="Idempotency-Key"
+        ),
+        creds: HTTPAuthorizationCredentials | None = Depends(bearer),
         _: None = Depends(verify_key),
         __: None = Depends(rate_limit),
     ) -> SendResult:
@@ -642,6 +646,10 @@ def create_app(
         # can validate payloads even when MAGIC_LINK_BASE_URL is unset.
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
+        idem_key = _check_idempotency_key(idempotency_key)
+        cached = _idempotency_lookup(creds, idem_key)
+        if cached is not None:
+            return SendResult(**cached)
         if magic_link is None:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -653,18 +661,22 @@ def create_app(
             background_tasks.add_task(
                 _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
             )
-            return SendResult(sent=False, status="accepted")
+            queued = SendResult(sent=False, status="accepted")
+            _idempotency_store(creds, idem_key, queued)
+            return queued
         result = magic_link.send(req.to, req.user_name, req.token)
         if not result.sent:
             _fail(result)
         status_val = getattr(result, "status", None)
-        return SendResult(
+        response = SendResult(
             sent=True,
             message_id=result.message_id,
             # Only surface status when it differs from default to preserve
             # backward-compatible response shape.
             status=status_val if status_val and status_val != "delivered" else None,
         )
+        _idempotency_store(creds, idem_key, response)
+        return response
 
     @app.post(
         "/send/otp",
