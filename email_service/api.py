@@ -236,59 +236,111 @@ class _IdempotencyCache:
     processed at most once per worker. For strong cross-worker dedup, replace
     with a Redis-backed store.
 
-    Entries are cached only on **2xx** responses to avoid re-serving an error.
+    Entries are cached only on **2xx** responses (and queued "accepted" async
+    sends) to avoid re-serving an error.
+
+    # Concurrency (P1 NEW-V-3)
+
+    ``get_lock(bearer, key)`` returns a ``threading.Lock`` instance that callers
+    hold across the lookup → process → store critical section. Per-key
+    locking serializes only requests with the *same* key; requests with
+    different keys run in parallel.
+
+    # Body fingerprint (P1 NEW-V-2)
+
+    Each entry stores a ``fingerprint`` (SHA-256 of the canonical request body).
+    Callers MUST verify the fingerprint matches before returning a cached
+    response, and reject mismatches with HTTP 409 — same key + different body
+    is a contract violation, not a cache hit.
     """
 
     def __init__(self, *, ttl_seconds: float, max_entries: int) -> None:
         self._ttl = float(ttl_seconds)
         self._max = max(0, int(max_entries))
-        # key = (bearer_token, idempotency_key) → (expires_at, response_dict)
-        self._store: dict[tuple[str, str], tuple[float, dict]] = {}
-        self._lock = threading.Lock()
+        # key = (bearer_token, idempotency_key)
+        # value = {"expires": float, "fingerprint": str, "response": dict}
+        self._store: dict[tuple[str, str], dict] = {}
+        # Per-key processing lock (NEW-V-3). Lifetime tied to the cache entry —
+        # evicted alongside the store entry.
+        self._key_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._meta_lock = threading.Lock()
 
     @property
     def enabled(self) -> bool:
         return self._max > 0 and self._ttl > 0
 
+    def get_lock(self, bearer: str, key: str) -> threading.Lock:
+        """Return the per-key lock (creates one if absent).
+
+        Holding this lock serializes only requests with the same
+        ``(bearer, key)`` — different keys remain parallel.
+        """
+        composite = (bearer, key)
+        with self._meta_lock:
+            lock = self._key_locks.get(composite)
+            if lock is None:
+                lock = threading.Lock()
+                self._key_locks[composite] = lock
+            return lock
+
     def _evict_expired_locked(self, now: float) -> None:
         # Cheap pass: scan and drop expired. Bounded by _max so worst-case
-        # cost is O(_max).
-        expired = [k for k, (exp, _) in self._store.items() if exp <= now]
+        # cost is O(_max). Also drops the matching key lock.
+        expired = [k for k, e in self._store.items() if e["expires"] <= now]
         for k in expired:
-            del self._store[k]
+            self._store.pop(k, None)
+            self._key_locks.pop(k, None)
 
     def get(
         self, bearer: str, key: str, *, now: float | None = None
     ) -> dict | None:
+        """Return the cached entry dict ``{"fingerprint": ..., "response": ...}``
+        or ``None`` when absent / expired.
+        """
         if not self.enabled:
             return None
         t = now if now is not None else time.monotonic()
-        with self._lock:
+        with self._meta_lock:
             entry = self._store.get((bearer, key))
             if entry is None:
                 return None
-            exp, payload = entry
-            if exp <= t:
+            if entry["expires"] <= t:
                 self._store.pop((bearer, key), None)
+                self._key_locks.pop((bearer, key), None)
                 return None
-            return payload
+            # Return the entry (caller reads fingerprint + response).
+            return {
+                "fingerprint": entry["fingerprint"],
+                "response": entry["response"],
+            }
 
     def put(
-        self, bearer: str, key: str, value: dict, *, now: float | None = None
+        self,
+        bearer: str,
+        key: str,
+        fingerprint: str,
+        response: dict,
+        *,
+        now: float | None = None,
     ) -> None:
         if not self.enabled:
             return
         t = now if now is not None else time.monotonic()
-        with self._lock:
+        with self._meta_lock:
             if len(self._store) >= self._max:
                 self._evict_expired_locked(t)
                 # Still full? Drop the oldest by expiry to make room.
                 if len(self._store) >= self._max:
                     oldest_key = min(
-                        self._store, key=lambda k: self._store[k][0]
+                        self._store, key=lambda k: self._store[k]["expires"]
                     )
                     self._store.pop(oldest_key, None)
-            self._store[(bearer, key)] = (t + self._ttl, value)
+                    self._key_locks.pop(oldest_key, None)
+            self._store[(bearer, key)] = {
+                "expires": t + self._ttl,
+                "fingerprint": fingerprint,
+                "response": response,
+            }
 
 
 def _build_idempotency_cache() -> _IdempotencyCache:
