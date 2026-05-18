@@ -641,3 +641,189 @@ class TestNewV3_IdempotencyConcurrency:
         assert r1.status_code == 200
         assert r2.status_code == 200
         assert sender.send.call_count == 2
+
+
+# ============================================================================
+# NEW-V-4. Lock-eviction race fix (code-L23).
+#
+# `_IdempotencyCache.get()` previously popped both `_store[key]` AND
+# `_key_locks[key]` when an entry expired. That orphaned any in-flight
+# holder of the old Lock instance: the next caller would `get_lock(key)`
+# and create a *fresh* Lock, allowing two processors to run the same key
+# concurrently. The fix decouples the lock dict lifetime from cache entry
+# lifetime — locks persist across expiry/eviction.
+# ============================================================================
+class TestNewV4_LockEvictionRace:
+    def test_idempotency_lock_dict_retains_lock_after_cache_expiry(self):
+        """Lock identity for (bearer, key) must survive cache entry expiry.
+
+        This is the unit-level guarantee NEW-V-4 depends on; the race in
+        the concurrent test cannot occur if this invariant holds.
+        """
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        lock_before = cache.get_lock("b", "k")
+
+        # Insert an entry then force-expire it via a future `now`.
+        cache.put("b", "k", "fp", {"v": 1}, now=100.0)
+        # Confirm expiry path runs (entry must look stale) — get returns None.
+        assert cache.get("b", "k", now=100.0 + 400.0) is None
+
+        # The lock dict must STILL contain the same Lock instance.
+        lock_after = cache.get_lock("b", "k")
+        assert lock_after is lock_before, (
+            "lock identity changed after cache entry expiry — "
+            "in-flight holders would be orphaned"
+        )
+
+    def test_idempotency_lock_retained_after_capacity_eviction(self):
+        """Eviction by capacity also must not drop the lock."""
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=2)
+        lock_k1 = cache.get_lock("b", "k1")
+        cache.put("b", "k1", "fp1", {"v": 1}, now=100.0)
+        cache.put("b", "k2", "fp2", {"v": 2}, now=101.0)
+        # Adding k3 forces eviction of oldest (k1) from _store.
+        cache.put("b", "k3", "fp3", {"v": 3}, now=102.0)
+        # k1's store entry is gone but its lock object must remain.
+        assert cache.get("b", "k1", now=103.0) is None
+        assert cache.get_lock("b", "k1") is lock_k1, (
+            "lock identity changed after capacity eviction"
+        )
+
+    def test_idempotency_lock_eviction_race(self):
+        """End-to-end: an expired prior entry under concurrent same-key
+        requests must NOT allow duplicate execution.
+
+        Reproduces the NEW-V-4 scenario: prior entry exists but is stale
+        when threads A+B arrive. Without the fix, A would pop _store AND
+        _key_locks; B would create a fresh Lock and process in parallel
+        with A → sender.send.call_count == 2.
+
+        With the fix, both threads share the same Lock instance via the
+        retained dict entry → sender.send.call_count == 1.
+        """
+        import threading
+
+        send_started = threading.Event()
+        proceed = threading.Event()
+
+        def slow_send(**kwargs):
+            send_started.set()
+            proceed.wait(timeout=3.0)
+            return SendResult(sent=True, message_id="<once@h>")
+
+        sender = MagicMock()
+        sender.send.side_effect = slow_send
+
+        # Very short TTL so we can pre-seed an expired entry without
+        # waiting in real time.
+        cache = _IdempotencyCache(ttl_seconds=0.05, max_entries=100)
+        # Seed an expired entry for the target (bearer, key).
+        cache.put(
+            "k",  # bearer  (matches API_KEY "k" below)
+            "RACE-K",
+            fingerprint="stale-fp",
+            response={"sent": True, "message_id": "<stale@h>"},
+            now=0.0,
+        )
+        # By the time concurrent requests run, time.monotonic() will be far
+        # greater than 0.0 + 0.05 — entry is expired on next get().
+
+        app = create_app(
+            sender=sender,
+            api_key="k",
+            otp=MagicMock(spec=OTPNotifier),
+            idempotency_cache=cache,
+            rate_limiter=_SlidingWindowLimiter(
+                max_requests=10_000, window_seconds=60.0
+            ),
+        )
+        client = TestClient(app)
+        body = {"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"}
+        headers = {"Authorization": "Bearer k", "Idempotency-Key": "RACE-K"}
+
+        def post():
+            return client.post("/send", headers=headers, json=body)
+
+        results = []
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            futures = [pool.submit(post) for _ in range(10)]
+            # Wait for the first sender invocation, then release them all.
+            send_started.wait(timeout=3.0)
+            proceed.set()
+            for f in futures:
+                results.append(f.result(timeout=5.0))
+
+        statuses = [r.status_code for r in results]
+        # All 10 succeed (cached replays + the one real send).
+        assert statuses.count(200) == 10, statuses
+        # The critical invariant: ONE real execution despite the expired
+        # prior entry + concurrent arrival.
+        assert sender.send.call_count == 1, (
+            f"lock-eviction race regressed: expected 1 send, "
+            f"got {sender.send.call_count}"
+        )
+
+    def test_idempotency_long_first_blocks_waiter_eventually_returns_cached(
+        self,
+    ):
+        """First caller's slow send must not produce a second sender
+        invocation for a concurrent same-key + same-body waiter; the
+        waiter blocks on the per-key lock and receives the cached
+        response after the first completes.
+        """
+        import threading
+
+        first_in_send = threading.Event()
+        release_first = threading.Event()
+
+        def slow_first_send(**kwargs):
+            first_in_send.set()
+            release_first.wait(timeout=3.0)
+            return SendResult(sent=True, message_id="<first@h>")
+
+        sender = MagicMock()
+        sender.send.side_effect = slow_first_send
+
+        cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
+        app = create_app(
+            sender=sender,
+            api_key="k",
+            otp=MagicMock(spec=OTPNotifier),
+            idempotency_cache=cache,
+            rate_limiter=_SlidingWindowLimiter(
+                max_requests=10_000, window_seconds=60.0
+            ),
+        )
+        client = TestClient(app)
+        body = {"to": "u@t.com", "subject": "s", "html_body": "<p>x</p>"}
+        headers = {"Authorization": "Bearer k", "Idempotency-Key": "WAIT-K"}
+
+        def post():
+            return client.post("/send", headers=headers, json=body)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_first = pool.submit(post)
+            # Wait for first to start sending so the second arrives after
+            # the lock is held.
+            assert first_in_send.wait(timeout=3.0)
+            f_second = pool.submit(post)
+            # Give the second thread a moment to enter the route and block
+            # on the lock. Then release the first.
+            time.sleep(0.1)
+            assert sender.send.call_count == 1, (
+                "second request should be blocked on the lock; sender "
+                "must not have been called twice yet"
+            )
+            release_first.set()
+            r1 = f_first.result(timeout=5.0)
+            r2 = f_second.result(timeout=5.0)
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r1.json() == r2.json(), (
+            "waiter must receive the cached response from the first call"
+        )
+        assert sender.send.call_count == 1, (
+            f"expected exactly one sender execution; got "
+            f"{sender.send.call_count}"
+        )
