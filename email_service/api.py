@@ -486,6 +486,7 @@ def create_app(
         background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
         _: None = Depends(verify_key),
+        __: None = Depends(rate_limit),
     ) -> SendResult:
         # Dry-run must succeed before the configuration check so that callers
         # can validate payloads even when MAGIC_LINK_BASE_URL is unset.
