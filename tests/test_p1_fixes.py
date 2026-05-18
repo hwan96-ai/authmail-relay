@@ -812,7 +812,7 @@ class TestNewV4_LockEvictionRace:
             f_second = pool.submit(post)
             # Give the second thread a moment to enter the route and block
             # on the lock. Then release the first.
-            time.sleep(0.1)
+            _time.sleep(0.1)
             assert sender.send.call_count == 1, (
                 "second request should be blocked on the lock; sender "
                 "must not have been called twice yet"
