@@ -306,6 +306,11 @@ class SmtpSender:
     ) -> SendResult:
         start = time.perf_counter()
         email_send_active.inc()
+        # P0-5: track whether sendmail() returned. SMTPServerDisconnected after
+        # this point means the server accepted the message and died on QUIT —
+        # the message was delivered, so retrying would duplicate.
+        sendmail_returned = False
+        sendmail_refused: dict | None = None
         try:
             with smtplib.SMTP(self._cfg.host, self._cfg.port,
                               timeout=self._cfg.timeout) as server:
