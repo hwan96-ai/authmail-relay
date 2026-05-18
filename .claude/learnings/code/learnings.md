@@ -6,6 +6,20 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-verify-2026-05-18-008 (verify-only, 평탄화 확정)
+
+**0 신규 secondary 결함 발견.** code-L24 (fix→verify 사이클의 평탄화) 예측 적중 — 4번째 verify pass 에서 처음 0-finding 달성. 5 P0 + 4 P1 tier 모두 STABLE. Release Gate 진입 가능.
+
+2 신규 learning (모두 P2/P3, 의미 기록 차원):
+- **code-L26** [P3]: 평탄화 시그널 — fix pass 가 (a) 새 추상화 X, (b) line 단순 제거/추가, (c) 회귀 테스트 ≥4 동시 충족 시 다음 verify 0 finding 예상.
+- **code-L27** [P2]: 락 순서 invariant (per-key lock → meta_lock) 가 implicit. 새 lock 도입 시 ordering 깨질 위험. docstring 명시 필요.
+
+Priors 변경:
+- **code-L24 (meta — 평탄화 예측)**: status **VALIDATED**. 본 verify 가 예측 정확성 입증.
+- **L-SEED-01**: 5회차 invocation (0 finding) — learning 영구 유효성 유지, 평탄화 후에도 회귀 테스트 의무.
+
+다음 단계: `/hwan-refactor-git` (Release Gate) 권장. docs P2 + Linux 1회 실측 + (선택) Phase A small fix pass.
+
 ## 2026-05-18 — gate-code-fix-2026-05-18-007 (NEW-V-4 surgical fix)
 
 1 신규 learning + 1 prior RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-007/SUMMARY.md` "New Learnings Captured" 참조.
