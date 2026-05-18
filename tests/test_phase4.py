@@ -223,6 +223,8 @@ def test_no_retry_on_partial_refusal():
 
 
 def test_message_id_stable_across_retries():
+    """Message-ID does not regenerate on retry. Use a retriable failure
+    (transient 421) — SMTPServerDisconnected is now non-retriable per P0-5."""
     sender = SmtpSender(
         SmtpConfig(host="smtp.test.com", port=587, user="t@t.com", password="pw"),
         max_retries=2,
@@ -242,7 +244,7 @@ def test_message_id_stable_across_retries():
             msg = email.message_from_string(raw)
             seen_message_ids.append(msg["Message-ID"])
             if counter["n"] == 1:
-                raise smtplib.SMTPServerDisconnected()
+                raise smtplib.SMTPResponseException(421, b"try again")
             return {}
 
         s.sendmail.side_effect = capture_send
