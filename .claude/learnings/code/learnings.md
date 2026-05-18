@@ -6,6 +6,21 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-code-fix-2026-05-18-001 (P0 fix implementation pass)
+
+다음 3개 신규 learning 등록. 전체 11-필드 schema 는 `../../workflow/gate-code-fix-2026-05-18-001/SUMMARY.md` 의 "New Learnings Captured" 섹션 참조.
+
+- **code-L09** [P1]: SSRF validator 추가 시 기존 test fixture (fake DNS hostname) 회귀 위험 — 환경변수 allowlist override 필수
+- **code-L10** [P1]: SMTPServerDisconnected 는 sendmail() phase 에 따라 retriable 여부 다름 — sendmail_returned 플래그 필수
+- **code-L11** [P2]: 라우트당 underscore Depends 3+ 누적 시 통합 Depends 함수 고려
+
+직전 priors (L-SEED-01 ~ L-SEED-05) 적용 결과:
+- L-SEED-01: ACTIVE (process learning, 영구 유효)
+- L-SEED-02: ACTIVE 유지 (webhook 측만 부분 해결, SMTP retry sleep 미해결)
+- L-SEED-03: RESOLVED (url_validation.py)
+- L-SEED-04: RESOLVED (Pydantic max_length)
+- L-SEED-05: RESOLVED (sendmail_returned + ERR_SMTP_DISCONNECT_UNCERTAIN)
+
 ## 2026-05-16 — gate-code-2026-05-16-001 (initial audit, no execution) [LEGACY FORMAT]
 
 ### L1 — BackgroundTasks + 동기 IO 패턴은 P0
