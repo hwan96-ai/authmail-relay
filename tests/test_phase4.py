@@ -76,7 +76,13 @@ def test_capture_dir_unset_uses_smtp(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # 4.1 + 4.2 Retry with exponential backoff + metrics
 # ---------------------------------------------------------------------------
-def test_retry_succeeds_after_transient_disconnect(monkeypatch):
+def test_retry_succeeds_after_transient_timeout(monkeypatch):
+    """A truly transient failure (timeout) still retries.
+
+    Note: SMTPServerDisconnected mid-sendmail is now non-retriable to prevent
+    double-send (P0-5). See ``test_disconnect_mid_sendmail_does_not_retry`` and
+    ``test_disconnect_after_sendmail_treated_as_delivered`` below.
+    """
     monkeypatch.delenv("EMAIL_TEST_CAPTURE_DIR", raising=False)
     sender = SmtpSender(
         SmtpConfig(host="smtp.test.com", port=587, user="t@t.com", password="pw"),
@@ -92,8 +98,8 @@ def test_retry_succeeds_after_transient_disconnect(monkeypatch):
         server.__exit__.return_value = False
         server.has_extn.return_value = True
         if call_count["n"] == 1:
-            # First connect: disconnect mid-flow.
-            server.sendmail.side_effect = smtplib.SMTPServerDisconnected("boom")
+            # Transient I/O timeout — still retriable.
+            server.sendmail.side_effect = TimeoutError("slow server")
         else:
             server.sendmail.return_value = {}
         return server
