@@ -275,8 +275,11 @@ class _IdempotencyCache:
         # key = (bearer_token, idempotency_key)
         # value = {"expires": float, "fingerprint": str, "response": dict}
         self._store: dict[tuple[str, str], dict] = {}
-        # Per-key processing lock (NEW-V-3). Lifetime tied to the cache entry —
-        # evicted alongside the store entry.
+        # Per-key processing lock (NEW-V-3). Lifetime is DECOUPLED from the
+        # cache entry: locks persist across store eviction/expiry so an
+        # in-flight holder is never orphaned (NEW-V-4 / code-L23). The lock
+        # dict is bounded only by unique-key cardinality; see TODO in
+        # _evict_expired_locked for future eviction policy.
         self._key_locks: dict[tuple[str, str], threading.Lock] = {}
         self._meta_lock = threading.Lock()
 
