@@ -220,6 +220,85 @@ def _build_rate_limiter() -> _SlidingWindowLimiter:
     return _SlidingWindowLimiter(max_requests=limit, window_seconds=60.0)
 
 
+# P1 idempotency: cap and TTL for the in-memory dedup cache.
+MAX_IDEMPOTENCY_KEY_LEN = 128
+_IDEMPOTENCY_MAX_ENTRIES = 10_000
+
+
+class _IdempotencyCache:
+    """Per-bearer dedup of ``Idempotency-Key`` -> cached response.
+
+    Bounded in size (oldest entries evicted) and TTL'd. In-memory, per-process.
+    Multi-worker deployments use this as a per-worker cap; same key may be
+    processed at most once per worker. For strong cross-worker dedup, replace
+    with a Redis-backed store.
+
+    Entries are cached only on **2xx** responses to avoid re-serving an error.
+    """
+
+    def __init__(self, *, ttl_seconds: float, max_entries: int) -> None:
+        self._ttl = float(ttl_seconds)
+        self._max = max(0, int(max_entries))
+        # key = (bearer_token, idempotency_key) → (expires_at, response_dict)
+        self._store: dict[tuple[str, str], tuple[float, dict]] = {}
+        self._lock = threading.Lock()
+
+    @property
+    def enabled(self) -> bool:
+        return self._max > 0 and self._ttl > 0
+
+    def _evict_expired_locked(self, now: float) -> None:
+        # Cheap pass: scan and drop expired. Bounded by _max so worst-case
+        # cost is O(_max).
+        expired = [k for k, (exp, _) in self._store.items() if exp <= now]
+        for k in expired:
+            del self._store[k]
+
+    def get(
+        self, bearer: str, key: str, *, now: float | None = None
+    ) -> dict | None:
+        if not self.enabled:
+            return None
+        t = now if now is not None else time.monotonic()
+        with self._lock:
+            entry = self._store.get((bearer, key))
+            if entry is None:
+                return None
+            exp, payload = entry
+            if exp <= t:
+                self._store.pop((bearer, key), None)
+                return None
+            return payload
+
+    def put(
+        self, bearer: str, key: str, value: dict, *, now: float | None = None
+    ) -> None:
+        if not self.enabled:
+            return
+        t = now if now is not None else time.monotonic()
+        with self._lock:
+            if len(self._store) >= self._max:
+                self._evict_expired_locked(t)
+                # Still full? Drop the oldest by expiry to make room.
+                if len(self._store) >= self._max:
+                    oldest_key = min(
+                        self._store, key=lambda k: self._store[k][0]
+                    )
+                    self._store.pop(oldest_key, None)
+            self._store[(bearer, key)] = (t + self._ttl, value)
+
+
+def _build_idempotency_cache() -> _IdempotencyCache:
+    raw_ttl = os.environ.get("API_IDEMPOTENCY_TTL_SECONDS", "86400")
+    try:
+        ttl = float(raw_ttl)
+    except ValueError:
+        ttl = 86400.0
+    return _IdempotencyCache(
+        ttl_seconds=ttl, max_entries=_IDEMPOTENCY_MAX_ENTRIES
+    )
+
+
 def _build_sender_from_env() -> SmtpSender:
     # SMTP_USER/PASSWORD are optional so that no-auth SMTP servers
     # (Mailpit, MailHog, ...) can be used via docker-compose.dev.yml.
