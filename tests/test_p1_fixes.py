@@ -257,21 +257,24 @@ class TestP1B_Idempotency:
     def test_cache_evicts_at_capacity(self):
         cache = _IdempotencyCache(ttl_seconds=300, max_entries=3)
         # Fill at three different (bearer, key) tuples.
-        cache.put("b", "k1", {"v": 1}, now=100.0)
-        cache.put("b", "k2", {"v": 2}, now=101.0)
-        cache.put("b", "k3", {"v": 3}, now=102.0)
+        cache.put("b", "k1", "fp1", {"v": 1}, now=100.0)
+        cache.put("b", "k2", "fp2", {"v": 2}, now=101.0)
+        cache.put("b", "k3", "fp3", {"v": 3}, now=102.0)
         # Adding a 4th forces eviction (oldest expiry = k1).
-        cache.put("b", "k4", {"v": 4}, now=103.0)
+        cache.put("b", "k4", "fp4", {"v": 4}, now=103.0)
         assert cache.get("b", "k1", now=104.0) is None
-        assert cache.get("b", "k4", now=104.0) == {"v": 4}
+        # get() now returns {fingerprint, response} envelope.
+        k4 = cache.get("b", "k4", now=104.0)
+        assert k4 is not None and k4["response"] == {"v": 4}
+        assert k4["fingerprint"] == "fp4"
 
     def test_cache_isolates_bearers(self):
         """Two different bearer tokens with the same key must NOT collide."""
         cache = _IdempotencyCache(ttl_seconds=300, max_entries=100)
-        cache.put("bearer-a", "key", {"who": "a"})
-        cache.put("bearer-b", "key", {"who": "b"})
-        assert cache.get("bearer-a", "key") == {"who": "a"}
-        assert cache.get("bearer-b", "key") == {"who": "b"}
+        cache.put("bearer-a", "key", "fp", {"who": "a"})
+        cache.put("bearer-b", "key", "fp", {"who": "b"})
+        assert cache.get("bearer-a", "key")["response"] == {"who": "a"}
+        assert cache.get("bearer-b", "key")["response"] == {"who": "b"}
 
 
 # ============================================================================
