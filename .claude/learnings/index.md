@@ -56,7 +56,8 @@ Next-Session Checklist Item: "이번 diff 가 사용자 제공 URL 을 서버에
 Applies To: email_service/webhooks.py, **/callbacks/**, **/oauth/**
 Owner Gate: code, git
 Evidence: api.py:51 (no validator) + webhooks.py:33-65 (gate-code-2026-05-16-001/SUMMARY.md P0-2)
-Status: active
+Status: resolved
+Resolved-By: gate-code-fix-2026-05-18-001 (email_service/url_validation.py + Pydantic field validators)
 ```
 
 ### L-SEED-04
