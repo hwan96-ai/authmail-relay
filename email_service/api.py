@@ -299,12 +299,22 @@ class _IdempotencyCache:
             return lock
 
     def _evict_expired_locked(self, now: float) -> None:
-        # Cheap pass: scan and drop expired. Bounded by _max so worst-case
-        # cost is O(_max). Also drops the matching key lock.
+        # Cheap pass: scan and drop expired _store entries. Bounded by _max
+        # so worst-case cost is O(_max).
+        #
+        # IMPORTANT (NEW-V-4 / code-L23): We do NOT pop ``_key_locks``
+        # alongside the store. An in-flight holder may still own the lock
+        # for this (bearer, key); removing it from the dict would let a
+        # concurrent caller create a fresh Lock and process the same key
+        # in parallel — defeating the per-key serialization guarantee of
+        # NEW-V-3.
+        #
+        # TODO(future): bound _key_locks via a separate maintenance pass
+        # (idle TTL, e.g. evict lock entries unused for 1h). Bounded today
+        # only by unique-key cardinality * ~80 bytes; ~800 KB at 10k keys.
         expired = [k for k, e in self._store.items() if e["expires"] <= now]
         for k in expired:
             self._store.pop(k, None)
-            self._key_locks.pop(k, None)
 
     def get(
         self, bearer: str, key: str, *, now: float | None = None
