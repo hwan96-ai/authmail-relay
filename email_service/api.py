@@ -560,11 +560,19 @@ def create_app(
         request: Request,
         background_tasks: BackgroundTasks,
         x_dry_run: str | None = Header(default=None, alias="X-Dry-Run"),
+        idempotency_key: str | None = Header(
+            default=None, alias="Idempotency-Key"
+        ),
+        creds: HTTPAuthorizationCredentials | None = Depends(bearer),
         _: None = Depends(verify_key),
         __: None = Depends(rate_limit),
     ) -> SendResult:
         if _is_dry_run(x_dry_run):
             return _DRY_RUN_RESULT
+        idem_key = _check_idempotency_key(idempotency_key)
+        cached = _idempotency_lookup(creds, idem_key)
+        if cached is not None:
+            return SendResult(**cached)
         rid = getattr(request.state, "request_id", None)
         if req.webhook_url:
             def _do_send():
@@ -580,11 +588,13 @@ def create_app(
             background_tasks.add_task(
                 _run_and_notify, _do_send, req.webhook_url, req.webhook_secret
             )
-            return SendResult(
+            queued = SendResult(
                 sent=False, status="accepted", message=(
                     "Send queued; final result will be delivered via webhook"
                 ),
             )
+            _idempotency_store(creds, idem_key, queued)
+            return queued
         result = sender.send(
             to=req.to,
             subject=req.subject,
@@ -597,13 +607,15 @@ def create_app(
         if not result.sent:
             _fail(result)
         status_val = getattr(result, "status", None)
-        return SendResult(
+        response = SendResult(
             sent=True,
             message_id=result.message_id,
             # Only surface status when it differs from default to preserve
             # backward-compatible response shape.
             status=status_val if status_val and status_val != "delivered" else None,
         )
+        _idempotency_store(creds, idem_key, response)
+        return response
 
     @app.post(
         "/send/magic-link",
