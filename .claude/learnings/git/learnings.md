@@ -6,6 +6,25 @@
 >
 > 신규 learning 은 반드시 11-필드 schema 로 이 파일 하단에 append.
 
+## 2026-05-18 — gate-release-fix-2026-05-18-002 (CRIT-2/3/4 surgical resolution)
+
+2 신규 learning + 3 priors RESOLVED. 전체 11-필드 schema 는 `../../workflow/gate-release-fix-2026-05-18-002/SUMMARY.md` "New Learnings Captured" 참조.
+
+- **git-L04** [P1]: GitHub Actions SHA 핀의 stale 위험. Dependabot 자동 갱신 또는 분기별 audit 필요.
+- **git-L05** [P2]: `importlib.metadata` 기반 `__version__` 이 dev stale install 환경에서 잘못된 버전 반환. dev 가이드 보강 필요.
+
+Priors RESOLVED:
+- **L-SEED-06** (tag push 자동 publish): RESOLVED-By: gate-release-fix-2026-05-18-002 (smoke gate + manual approval gate)
+- **L-SEED-07** (mutable refs + OIDC publish): RESOLVED-By 동일 (5 액션 SHA pin + id-token 격리)
+- **L-SEED-08** (runbook 부재): RESOLVED-By 동일 (5 runbook 작성)
+- **git-L01** (Code Gate GREEN ≠ Release ready): **VALIDATED** — 본 fix 가 정확히 4 항목 처리하여 learning 의 actionability 입증.
+
+Priors 일부 진화:
+- code-L16 (V1 deprecation): 부분 resolved (CHANGELOG/README 명시). 명확한 major version timeline 미정.
+- code-L25 (lock dict 메모리): 부분 resolved (README 한계 명시). 코드 측 idle TTL 미구현.
+
+다음 단계: release-gate verify (`/hwan-refactor-git`) 재실행 권장 → SHIP WITH WATCHLIST 또는 SHIP 예상. PR 생성 + maintainer 가 pypi environment Required reviewers 설정 후 tag push.
+
 ## 2026-05-18 — gate-release-2026-05-18-001 (verify-only, BLOCK 유지)
 
 3 신규 learning. 전체 11-필드 schema 는 `../../workflow/gate-release-2026-05-18-001/SUMMARY.md` 의 "New Learnings Captured" 참조.
