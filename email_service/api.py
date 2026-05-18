@@ -4,7 +4,10 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import threading
+import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 
 from fastapi import (
@@ -23,7 +26,21 @@ from pydantic import BaseModel, Field, field_validator
 from email_service import metrics as metrics_module
 from email_service.notifiers import MagicLinkNotifier, OTPNotifier
 from email_service.sender import SmtpConfig, SmtpSender
+from email_service.url_validation import validate_webhook_url
 from email_service.webhooks import deliver_webhook
+
+
+# P0-3 (body size limits): caps for external input fields. Goal is to prevent
+# OOM from a single oversized request (FastAPI buffers the whole body before
+# Pydantic runs, and msg.as_string() doubles memory inside the SMTP path).
+MAX_SUBJECT_LEN = 998       # RFC 5322 line-length cap
+MAX_BODY_LEN = 10_000_000   # 10 MB per HTML/text body
+MAX_RECIPIENTS = 100        # per-list cap on To/Cc/Bcc (1 + 100 + 100 worst)
+MAX_USER_NAME_LEN = 256
+MAX_TOKEN_LEN = 4096
+MAX_CODE_LEN = 64
+MAX_URL_LEN = 2048
+MAX_SECRET_LEN = 256
 
 logger = logging.getLogger(__name__)
 
