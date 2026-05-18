@@ -49,7 +49,7 @@ def deliver_webhook(
     secret: str | None,
     *,
     max_retries: int = DEFAULT_MAX_RETRIES,
-    backoffs: tuple[int, ...] = DEFAULT_BACKOFFS,
+    backoffs: tuple[float, ...] = DEFAULT_BACKOFFS,
     timeout: float = 10.0,
     client: httpx.Client | None = None,
 ) -> bool:
