@@ -156,3 +156,4 @@ Status: active
 | 2026-05-16 | code | gate-code-2026-05-16-001 | 0 (seed 없던 시점) | 8 (initial) | — | [link](../workflow/gate-code-2026-05-16-001/SUMMARY.md) |
 | 2026-05-16 | git | gate-release-2026-05-16-001 | 0 (seed 없던 시점) | 10 | — | [link](../workflow/gate-release-2026-05-16-001/SUMMARY.md) |
 | 2026-05-18 | meta | workflow-improvement | — | 8 seed normalized | — | (이 변경) |
+| 2026-05-18 | code | gate-code-fix-2026-05-18-001 | 5 (L-SEED-01,-02,-03,-04,-05) | 3 (code-L09,-L10,-L11) | 0 | [link](../workflow/gate-code-fix-2026-05-18-001/SUMMARY.md) — 4 P0 resolved, 1 partial (L-SEED-02) |
