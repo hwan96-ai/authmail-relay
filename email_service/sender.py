@@ -354,6 +354,11 @@ class SmtpSender:
                 refused = server.sendmail(
                     self._cfg.from_addr, recipients, msg.as_string()
                 )
+                # P0-5: server accepted DATA (or refused per-recipient). If
+                # the connection drops AFTER this point we know the message
+                # was delivered and must not retry.
+                sendmail_returned = True
+                sendmail_refused = refused
             duration_ms = (time.perf_counter() - start) * 1000.0
             email_send_duration_seconds.observe(duration_ms / 1000.0)
             if refused:
