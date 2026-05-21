@@ -9,6 +9,8 @@
 3. [Always-On Skills](docs/claude/always-on-skills.md) — 코드 작성/리뷰/리팩토링 전에 읽을 필수 skill.
 4. [Hwan Refactor Gates](docs/claude/refactor-gates.md) — `/hwan-refactor-*` gate 실행 시 필수 절차.
 
+`docs/solutions/` 는 과거 문제 해결 기록(버그, 문서 gap, workflow pattern)을 category와 YAML frontmatter(`module`, `tags`, `problem_type`)로 정리하는 지식 저장소다. 관련 영역을 구현하거나 디버깅할 때 검색하면 이전 시행착오와 예방 규칙을 확인할 수 있다.
+
 ## 빠른 라우팅
 
 - 코드 작업이면 [Always-On Skills](docs/claude/always-on-skills.md)를 먼저 적용한다.
