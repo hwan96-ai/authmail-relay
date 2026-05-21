@@ -694,8 +694,7 @@ class TestNewV4_LockEvictionRace:
         same-key arrivals must NOT cause duplicate processing.
 
         This test was previously flaky (~40%) when written against the
-        Starlette TestClient — TestClient is not thread-safe (see
-        `git-L06` in .claude/learnings/git/learnings.md). We now exercise
+        Starlette TestClient — TestClient is not thread-safe. We now exercise
         ``_IdempotencyCache.get_lock`` + locking directly, mirroring the
         critical section structure inside ``_idempotency_guard`` without
         the HTTP / ASGI layer.
