@@ -1,23 +1,38 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-Security fixes target the latest released version.
+Security fixes target the latest released version of `hwan-email-service` on PyPI
+and the corresponding `master` branch. Older versions are not patched.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Please use GitHub's private vulnerability reporting for this repository if it is enabled.
+Please **do not open a public GitHub issue** for security-sensitive findings.
 
-Maintainers should enable GitHub Private Vulnerability Reporting before making this repository public.
+Report vulnerabilities privately via GitHub's
+[Private Vulnerability Reporting](https://github.com/hwan96-ai/email-service/security/advisories/new)
+for this repository. This routes the report directly to the maintainers and
+keeps exploit details out of public view until a fix is ready.
 
-If private reporting is unavailable, there is currently no guaranteed private fallback contact documented here. In that case, open a public issue that asks only for a private maintainer contact, but do not include exploit details, secrets, production URLs, proof-of-concept payloads, or sensitive technical details in the issue body.
+If for any reason private reporting is unavailable, open a minimal public issue
+that asks for a private maintainer contact channel — but do **not** include
+exploit details, secrets, proof-of-concept payloads, production URLs, or
+affected deployment specifics in that issue.
 
-Useful private report details include:
+### What to include in a private report
 
-- affected version or commit
-- deployment mode (library, HTTP service, Docker)
-- impact and attack preconditions
-- minimal reproduction steps
-- whether credentials, SMTP provider accounts, or webhook receivers may be exposed
+- Affected version or commit SHA
+- Deployment mode (library, HTTP service, Docker)
+- Impact and any attack preconditions (network position, prior auth, etc.)
+- Minimal reproduction steps or proof-of-concept
+- Whether SMTP credentials, API keys, or webhook receivers could be exposed
 
-Maintainers should acknowledge valid private reports within 7 days and coordinate a fix or mitigation before public disclosure.
+## Disclosure expectations
+
+- Maintainers aim to acknowledge valid private reports within **7 days**.
+- We coordinate a fix or mitigation with the reporter before public disclosure.
+- We ask reporters to give us a reasonable window (typically 30–90 days
+  depending on severity) before publishing details.
+
+Out-of-scope: theoretical issues without a reproducible impact, social
+engineering of maintainers, and findings against deployments you do not own.
