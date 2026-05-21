@@ -8,14 +8,14 @@ version = "0.4.2"
 description = "Self-hosted auth email service for Python/FastAPI teams using their own SMTP"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "email-service maintainers" }]
 keywords = ["email", "smtp", "fastapi", "magic-link", "otp", "transactional-email"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
