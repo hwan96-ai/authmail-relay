@@ -17,7 +17,7 @@ tags: [public-release, readme, docker-compose, security-docs, verification]
 
 ## Context
 
-The public-release review found that the README still taught an old Mailpit quickstart using a hardcoded `dev-secret`, while `docker-compose.dev.yml` had already been hardened to require `API_KEY` from `.env`. That mismatch made first-time onboarding fail and also left a weak-key pattern in public-facing docs.
+The public-release review found that the README still taught an old Mailpit quickstart using a hardcoded weak development token, while `docker-compose.dev.yml` had already been hardened to require `API_KEY` from `.env`. That mismatch made first-time onboarding fail and also left a weak-key pattern in public-facing docs.
 
 The same review surfaced adjacent public-readiness gaps: a custom notifier example interpolated untrusted HTML directly, webhook receiver docs prioritized replayable V1 signatures, metrics docs allowed unauthenticated public exposure by example, package trust files were missing, and package metadata was too thin for a public Python package.
 
@@ -34,7 +34,7 @@ Treat public-release documentation as executable configuration, not prose. For e
 Concrete checks used here:
 
 ```powershell
-rg -n "dev-secret" README.md .env.example docker-compose.dev.yml SECURITY.md pyproject.toml -S
+rg -n "weak development token" README.md .env.example docker-compose.dev.yml SECURITY.md pyproject.toml -S
 rg -n "1s, 10s, 60s|Bearer secret" README.md -S
 python -m pytest tests/ -v
 git diff --check
@@ -58,7 +58,7 @@ Before:
 
 ```bash
 # README claimed this worked, but compose no longer set it.
-curl -H "Authorization: Bearer dev-secret" http://127.0.0.1:8000/send/otp
+curl -H "Authorization: Bearer <redacted-weak-token>" http://127.0.0.1:8000/send/otp
 ```
 
 After:
@@ -86,7 +86,7 @@ html = f"<h1>{escape(user_name)}</h1><p>{escape(payload)}</p>"
 
 ## Mistakes And Wrong Assumptions
 
-- Assuming a prior compose hardening was fully reflected in README. It was not: the active Mailpit section still documented `dev-secret`.
+- Assuming a prior compose hardening was fully reflected in README. It was not: the active Mailpit section still documented a weak development token.
 - Treating webhook docs as already migrated because implementation emitted V2 signatures. The practical receiver example still taught V1-only verification.
 - Letting an SDK example use `"secret"` as a placeholder API key after adding stronger production guidance.
 - Trying to run `python -m build` late in verification without accounting for sandbox subprocess restrictions; pytest passed, but build verification remained blocked by the environment.

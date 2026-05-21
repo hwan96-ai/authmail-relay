@@ -56,7 +56,7 @@ http = ["fastapi>=0.100", "uvicorn>=0.23", "httpx>=0.25"]
 
 ### [LOW] (confidence 8/10) [VERIFIED] Configuration | Hardcoded dev API key in tracked file | docker-compose.dev.yml:12
 
-`API_KEY: dev-secret` is checked in. This is a dev-only compose file targeting mailpit, so the blast radius is local-only. The risk is operator confusion (someone copies this into prod) and search-engine indexing surfacing the literal string.
+`API_KEY: <redacted-weak-token>` is checked in. This is a dev-only compose file targeting mailpit, so the blast radius is local-only. The risk is operator confusion (someone copies this into prod) and search-engine indexing surfacing the literal string.
 
 **Recommendation:** Either rename the value to something obviously fake (`API_KEY: "REPLACE_ME_dev_only_do_not_use_in_prod"`) or move it into a gitignored `.env.dev` referenced via `env_file:`.
 
@@ -75,7 +75,7 @@ The following were checked and are correctly handled:
   - Dockerfile creates non-root `app` user (uid 10001) and `USER app` before CMD. — Dockerfile:17-19
   - Required env vars fail-fast at startup via `_required_env`. — api.py:18-22, 117-118
 - **A07 Identification & Authentication Failures:** Single shared bearer token; appropriate for service-to-service. No password-based auth, no session management surface.
-- **Secrets in git history:** Searched added-line history for `password`, `AKIA`, `sk-`, `API_KEY=`. Only hits are `.env.example` (placeholder `replace-with-long-random-secret`), README example (`<임의의-긴-비밀문자열>`), and the dev compose `dev-secret`. No real credentials ever committed. `.env` is not tracked.
+- **Secrets in git history:** Searched added-line history for `password`, `AKIA`, `sk-`, `API_KEY=`. Only hits are `.env.example` (placeholder `replace-with-long-random-secret`), README example (`<임의의-긴-비밀문자열>`), and the dev compose redacted weak token. No real credentials ever committed. `.env` is not tracked.
 - **Dockerfile env-var exposure:** No secrets baked in as `ENV` or `ARG`. Only non-sensitive runtime defaults (`HOST`, `PORT`, `PYTHONUNBUFFERED`). Secrets enter via `env_file: .env` at runtime (compose-level, not image-level).
 - **Webhooks / LLM integrations:** None present — confirmed.
 - **CI/CD risks (`pull_request_target`, unpinned actions):** `.github/` directory does not exist — N/A.

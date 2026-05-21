@@ -31,7 +31,7 @@
 
 - [ ] **1.3 docker-compose.dev.yml 의 하드코딩 API_KEY 제거**
   - 파일: [docker-compose.dev.yml](../docker-compose.dev.yml)
-  - 변경: `API_KEY: dev-secret` → `API_KEY: ${API_KEY:?Set API_KEY in .env or env}` (필수) 또는 `${API_KEY:-dev-only-do-not-use-in-prod}` (기본 + 경고)
+  - 변경: `API_KEY: <redacted-weak-token>` → `API_KEY: ${API_KEY:?Set API_KEY in .env or env}` (필수) 또는 `${API_KEY:-dev-only-do-not-use-in-prod}` (기본 + 경고)
   - 추가: [.env.example](../.env.example) 에 `API_KEY=` 라인 + "openssl rand -hex 32 로 생성" 주석
   - 검증: `docker compose -f docker-compose.dev.yml config` 가 API_KEY 비어 있으면 에러
   - 출처: [reports/04-security-audit.md](../reports/04-security-audit.md) LOW #1

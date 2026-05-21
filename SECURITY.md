@@ -8,7 +8,9 @@ Security fixes target the latest released version.
 
 Please use GitHub's private vulnerability reporting for this repository if it is enabled.
 
-If private reporting is unavailable, open a public issue that asks for a maintainer security contact, but do not include exploit details, secrets, production URLs, or proof-of-concept payloads in the issue body.
+Maintainers should enable GitHub Private Vulnerability Reporting before making this repository public.
+
+If private reporting is unavailable, there is currently no guaranteed private fallback contact documented here. In that case, open a public issue that asks only for a private maintainer contact, but do not include exploit details, secrets, production URLs, proof-of-concept payloads, or sensitive technical details in the issue body.
 
 Useful private report details include:
 
