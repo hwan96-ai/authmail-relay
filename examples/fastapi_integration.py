@@ -4,7 +4,7 @@ Use the async client when calling email-service from a FastAPI endpoint so the
 event loop is never blocked on SMTP.
 
 Run:
-    pip install fastapi uvicorn email-service[http]
+    pip install fastapi uvicorn "hwan-email-service[http]"
     EMAIL_SERVICE_URL=http://localhost:8000 EMAIL_SERVICE_API_KEY=key \\
         uvicorn examples.fastapi_integration:app --reload
 """

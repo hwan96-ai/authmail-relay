@@ -8,6 +8,10 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 Maintenance release. **No API or behavior changes.** Repackages `0.4.0` with public-readiness documentation, release pipeline safety hardening, and Dependabot dependency updates that landed after the `v0.4.0` tag was created. Note: the existing `v0.4.0` git tag points to an earlier commit and is intentionally not moved; do not reuse or retag it.
 
+### Packaging
+
+- PyPI distribution name is `hwan-email-service` to avoid conflict with an existing `email-service` project name on PyPI. The import package remains `email_service` — no consumer code changes required; only the install command changes (`pip install hwan-email-service`).
+
 ### Release pipeline
 
 - `release.yml`: split into a 2-step manual gate. Tag push now runs `build-and-smoke` only — it no longer triggers PyPI publish. Publishing requires explicit `workflow_dispatch` from the Actions UI with the target tag as input. Rationale: private repos may not expose Environment "Required reviewers", so the `environment: pypi` gate alone could not guarantee manual approval. The workflow_dispatch invocation IS the human approval gate. Required reviewers, if available, layers on top.

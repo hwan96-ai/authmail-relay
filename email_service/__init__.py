@@ -10,7 +10,7 @@ try:
     from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
     try:
-        __version__ = _pkg_version("email-service")
+        __version__ = _pkg_version("hwan-email-service")
     except PackageNotFoundError:
         __version__ = "0.0.0+dev"
 except ImportError:  # pragma: no cover — Python < 3.8 never supported
