@@ -53,7 +53,7 @@
 
 - [ ] caller endpoint 의 timeout / 5xx 분포 검토
 - [ ] webhook backoff 합계 (1+2+5=8s) 가 충분했나? caller 가 매번 8s 안에 복구 못 한다면 longer backoff 검토
-- [ ] DLQ 추가 가치 평가 (P1 향후 항목, 현재 미구현)
+- [ ] DLQ 추가 가치 평가 (현재 미구현)
 - [ ] message_id 기반 caller-side dedup 구축 권장 여부
 
 ## SSRF / DNS rebinding 차단된 경우 (false positive 처리)
