@@ -4,6 +4,14 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-22
+
+Metadata-only patch release. **No API or behavior changes.** Republishes `0.4.1` to refresh PyPI project metadata.
+
+### Packaging
+
+- Fixes the `Changelog` project URL shown on PyPI. The `0.4.1` release was published with a `Changelog` link pointing to `blob/main/CHANGELOG.md`, which 404s because the default branch is `master`. `pyproject.toml` was corrected on `master` after `0.4.1` shipped, but PyPI metadata only refreshes on a new release. This release republishes the same code with the corrected `blob/master/CHANGELOG.md` URL.
+
 ## [0.4.1] - 2026-05-22
 
 Maintenance release. **No API or behavior changes.** Repackages `0.4.0` with public-readiness documentation, release pipeline safety hardening, and Dependabot dependency updates that landed after the `v0.4.0` tag was created. Note: the existing `v0.4.0` git tag points to an earlier commit and is intentionally not moved; do not reuse or retag it.
