@@ -1,756 +1,144 @@
 # email-service
 
+[![PyPI](https://img.shields.io/pypi/v/hwan-email-service.svg)](https://pypi.org/project/hwan-email-service/)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-self-hosted auth email service for Python/FastAPI teams that need magic links, OTP codes, and password reset emails through their own SMTP.
+> Small self-hosted auth-email service for Python/FastAPI teams using their own SMTP.
 
-`email-service`는 인증 플로우에서 반복되는 이메일 발송을 작은 내부 서비스로 분리한다. SMTP 자격증명은 서비스 안에만 두고, Python/FastAPI 백엔드나 다른 내부 서비스는 Bearer 인증이 걸린 HTTP API로 매직링크, OTP, 비밀번호 재설정 이메일을 요청한다.
+`email-service` is a small, self-hosted service that sends **magic-link**, **OTP**,
+and **password-reset** emails through your own SMTP account. It keeps SMTP
+credentials and email-template logic out of every app that needs to send auth
+mail — your apps call one internal HTTP endpoint with a Bearer API key, or
+import it as a Python library.
 
----
-
-## 소개
-
-`email-service`는 SMTP로 auth-email HTML 메시지를 보내기 위한 재사용 가능한 파이썬 패키지이다. 다음 두 가지 사용 방식을 모두 지원한다.
-
-- **라이브러리 모드** — 같은 Python 프로세스에서 `SmtpSender`, `MagicLinkNotifier` 등을 직접 import해 호출한다. 외부 의존성 없음 (표준 라이브러리의 `smtplib`, `email`만 사용).
-- **HTTP 서비스 모드** — `python -m email_service` 로 FastAPI 서버를 기동하고, 다른 백엔드(언어 무관)가 REST로 메일 발송을 요청한다. SMTP 자격증명을 서버 측 환경변수에만 보관하고 호출자는 공유 `API_KEY` 로 인증한다.
-
-비밀번호 설정 매직링크 / 일회용 인증코드(OTP) 같은 자주 쓰이는 템플릿은 기본 제공되며, 커스텀 템플릿도 쉽게 추가할 수 있다.
-
-### Who this is for
-
-- Python/FastAPI 팀이 자체 SMTP 계정(Gmail, SES SMTP, 사내 relay 등)으로 인증 이메일을 보내고 싶을 때.
-- SMTP 비밀번호를 여러 앱에 흩뿌리지 않고, 작은 내부 HTTP 서비스 하나에 모으고 싶을 때.
-- 매직링크, OTP, 비밀번호 재설정처럼 트랜잭션 auth email만 안정적으로 처리하면 되는 초기 제품.
-
-### Who this is not for
-
-- 마케팅 캠페인, 대량 뉴스레터, list unsubscribe, bounce/complaint 자동 처리, deliverability 컨설팅이 필요한 팀.
-- 호출자별 API key, 조직별 quota, admin dashboard 같은 멀티테넌트 email platform이 필요한 경우.
-- SMTP 계정을 직접 운영하고 싶지 않고, 완전 관리형 발송 API와 SLA를 사고 싶은 경우.
-
-### Why this exists
-
-인증 이메일은 제품마다 필요하지만, 직접 `smtplib` 호출을 여러 서비스에 복붙하면 SMTP 자격증명 관리, HTML escaping, retry, metrics, webhook 결과 통지가 흩어진다. 이 프로젝트는 그 부분만 작게 묶어 내부 서비스로 실행하거나 라이브러리로 가져다 쓰는 것을 목표로 한다.
-
-### When to use this
-
-- 이미 쓸 SMTP provider가 있고, 인증 이메일 발송 경로를 코드 몇 줄 또는 REST API로 표준화하고 싶다.
-- self-hosted 배포와 운영 책임을 감수할 수 있다.
-- 제품 초기 단계라 Postmark/SendGrid 같은 완전 관리형 플랫폼의 모든 기능까지는 필요 없다.
-
-### When not to use this
-
-- 발송 평판, bounce processing, suppression list, analytics dashboard가 핵심 요구사항이다.
-- 인터넷에 직접 공개되는 public email API gateway가 필요하다. 이 서비스는 reverse proxy/API gateway 뒤의 내부 서비스로 운영하는 전제가 안전하다.
-- 팀이 SMTP credential rotation, proxy limits, metrics auth 같은 운영 작업을 맡을 수 없다.
-
-### Honest comparison
-
-| 선택지 | 장점 | 트레이드오프 |
-|---|---|---|
-| Resend | 개발자 경험 좋은 관리형 이메일 API | SMTP 자격증명을 직접 쓰는 self-hosted 내부 서비스가 아님 |
-| SendGrid | 대량 발송, 분석, deliverability 기능 풍부 | 인증 이메일만 필요한 작은 Python 서비스에는 과할 수 있음 |
-| Postmark | 트랜잭션 이메일에 강하고 운영 부담 낮음 | 외부 SaaS 의존과 비용을 받아들여야 함 |
-| AWS SES | 비용 효율 좋고 AWS 안에서 강력함 | 설정, IAM, sandbox, bounce 처리 등 운영 이해가 필요 |
-| raw `smtplib` | 의존성 적고 완전 직접 제어 | escaping, retry, metrics, API 인증, 템플릿 패턴을 직접 유지해야 함 |
-| this project | 자체 SMTP를 쓰는 Python/FastAPI auth-email microservice로 작고 검토 가능 | 멀티테넌트 플랫폼이나 deliverability SaaS가 아니며 운영 guardrail은 배포자가 책임져야 함 |
-
----
-
-## 보안 모델 / Security Model
-
-- **매직링크 토큰 엔트로피는 호출자 책임이다.** 본 패키지는 `MagicLinkNotifier` 로 전달된 `token` 문자열을 그대로 URL 쿼리에 인코딩만 할 뿐, 생성·검증·저장하지 않는다. 호출자는 최소 `secrets.token_urlsafe(32)` 수준의 엔트로피로 토큰을 생성하고, 만료·1회용 사용 등 라이프사이클을 별도로 관리해야 한다.
-- **`API_KEY` 는 공유 비밀** 이며 `Authorization: Bearer` 헤더로 전달된다. `openssl rand -hex 32` 등으로 충분히 길고 무작위인 값을 사용하고, 절대 저장소에 커밋하지 않는다.
-- **CRLF 헤더 인젝션** 은 sender 단계와 Pydantic 단계 모두에서 차단된다. `SMTP_FROM` 도 부팅 시 검증된다.
-- **STARTTLS** 가 서버에서 광고되지 않는 경우 `use_tls=True` 발송은 명시적으로 실패한다 (다운그레이드 / STRIPTLS 방어).
-
----
-
-## 주요 기능
-
-- **HTML + plain-text multipart 발송** — `text_body` 를 넘기면 HTML 미지원 클라이언트를 위한 대체본이 함께 첨부된다.
-- **cc / bcc 지원** — 헤더/수신자 목록에 올바르게 반영. bcc 는 헤더에 노출되지 않는다.
-- **CRLF 헤더 인젝션 차단** — `to`, `subject`, `from`, `cc`, `bcc` 에 `\r` / `\n` 이 포함되면 발송을 거부한다. HTTP API 에서는 sender 까지 가기 전 Pydantic 단계에서 `422` 로 차단.
-- **HTML 자동 이스케이프** — `MagicLinkNotifier` / `OTPNotifier` / `TemplateNotifier` 의 사용자 입력 값 (user_name, token, code, context) 은 기본적으로 `html.escape` 처리된다.
-- **플러그인 방식 Notifier** — `Notifier` 추상 클래스 상속으로 새로운 이메일 템플릿을 손쉽게 추가.
-- **STARTTLS + SMTP AUTH** — `SmtpConfig.use_tls` / `user` / `password` 로 제어. 자격증명이 비면 AUTH 생략.
-- **Fail-fast 기동** — HTTP 모드에서 필수 환경변수가 비어 있으면 `RuntimeError` 로 즉시 실패.
-- **OpenAPI 문서 자동 제공** — 기본 활성화된 [`/docs`](http://127.0.0.1:8000/docs) (Swagger UI), `/openapi.json`.
-
----
-
-## Deployment
-
-운영 환경 배포 전 반드시 확인할 사항들. 이 섹션을 건너뛰면 본 서비스가 의도한 보안/안정성 보장이 무너질 수 있다.
-
-### Public deployment guardrails
-
-공개 GitHub 저장소나 public deployed URL을 공유하기 전 최소 기준:
-
-- `API_KEY` 는 `openssl rand -hex 32` 또는 동등한 방식으로 생성한 긴 랜덤 값만 사용한다. 예제용 짧은 문자열을 운영에 쓰지 않는다.
-- 서비스는 인터넷에 직접 노출하지 말고 reverse proxy/API gateway 뒤에 둔다.
-- TLS termination은 앞단 proxy/gateway에서 처리한다.
-- 앞단 proxy/gateway에서 body-size limit을 설정한다. 예: nginx `client_max_body_size 12m`.
-- 실패한 인증 시도는 앞단 proxy/gateway/WAF에서 rate limit 한다. 앱 내부 rate limit은 인증된 `/send*` 요청 보호용이며, 잘못된 Bearer 토큰 대입 공격을 대신 막지 않는다.
-- `METRICS_ENABLED=true` 로 운영할 때는 `METRICS_REQUIRE_AUTH=true` 를 함께 설정하고, 가능하면 `/metrics` 는 내부망에서만 접근시킨다.
-- SMTP 자격증명과 `API_KEY` 는 secret store, 배포 플랫폼 secret, 또는 `.env`처럼 git 밖의 저장소에 보관한다.
-- `/docs`와 `/openapi.json`은 편리하지만 운영 외부 공개가 불필요하면 앞단에서 차단한다.
-
-### 워커 수 (single vs multi)
-
-본 서비스의 다음 상태는 **in-memory, per-process**이다:
-
-- **Rate limit** (`API_RATE_LIMIT_PER_MINUTE`): 워커당 cap. uvicorn workers=N 이면 실제 처리량 = N × cap.
-- **Idempotency cache** (`API_IDEMPOTENCY_TTL_SECONDS`): 워커당 dedup. 같은 `Idempotency-Key` 가 다른 워커에 분산되면 dedup 깨짐.
-- **Per-key concurrency lock**: 워커당 직렬화. 워커 N개면 같은 키가 최대 N회 동시 처리 가능.
-
-권장:
-
-- **단일 워커 + sticky LB**: 가장 단순. `uvicorn email_service --workers 1` 또는 같은 워커로 라우팅하는 LB. 본 서비스가 의도한 정확한 동작.
-- **멀티 워커**: rate-limit / idempotency 정확성이 SLA 일부면 외부 store (Redis 등) 로 교체 필요 — 현재 미지원, P1 향후 항목.
-
-### 본문 크기 제한
-
-Pydantic 의 `max_length` 가 422 거부를 보장하지만, FastAPI 가 요청 본문을 **메모리에 전체 buffer 한 후** Pydantic 을 실행한다. 따라서 100 MB 요청이 들어오면 거부는 되어도 메모리는 일시 점유.
-
-**필수**: 리버스 프록시에서 body cap 설정.
-
-```nginx
-# /etc/nginx/sites-available/email-service
-location / {
-    client_max_body_size 12m;   # 10 MB body cap + 2 MB headers/overhead
-    proxy_pass http://email-service:8000;
-}
+```text
+App / Auth server
+      │  Bearer API key
+      ▼
+  email-service     ← SMTP credentials live here
+      │
+      ▼
+ SMTP provider  ──►  User inbox
 ```
 
-uvicorn 자체에는 명시적 body cap 옵션이 없음 — proxy 단에서 차단.
+### What it is
 
-### 환경변수 reference
+- A small internal **auth-email gateway** for teams that already have SMTP.
+- Sends transactional auth emails: magic links, OTP codes, password resets,
+  plus arbitrary templated mail.
+- Built for Python/FastAPI teams, but the HTTP API is language-agnostic.
 
-| 변수 | 필수 | 기본 | 설명 |
-|------|------|------|------|
-| `SMTP_HOST` | ✅ | — | SMTP 호스트 |
-| `SMTP_PORT` | | `587` | SMTP 포트 |
-| `SMTP_USER` | | `""` | SMTP 사용자 (옵션) |
-| `SMTP_PASSWORD` | | `""` | SMTP 비밀번호 (옵션) |
-| `SMTP_FROM` | | `SMTP_USER` | From 헤더 주소 |
-| `SMTP_USE_TLS` | | `true` | STARTTLS 사용 |
-| `API_KEY` | ✅ | — | Bearer 인증 토큰. `openssl rand -hex 32` 권장 |
-| `API_RATE_LIMIT_PER_MINUTE` | | `60` | `/send*` 의 per-bearer 분당 호출 cap. `0` 이면 비활성. |
-| `API_IDEMPOTENCY_TTL_SECONDS` | | `86400` | `Idempotency-Key` 캐시 TTL (초). `0` 이면 비활성. |
-| `WEBHOOK_ALLOW_HOSTS` | | `""` | `webhook_url` SSRF 검증의 hostname allowlist (콤마 구분). 내부 콜백용. |
-| `WEBHOOK_ALLOW_LOOPBACK` | | `false` | `1` 이면 loopback/private IP 허용. **테스트 전용 — production 금지** |
-| `EMAIL_SERVICE_DEBUG` | | `false` | `1` 이면 smtplib 디버그 출력 (**SMTP 비밀번호가 stderr 에 base64 로 출력됨 — production 절대 금지**) |
-| `MAGIC_LINK_BASE_URL` | | unset | 설정 시 `/send/magic-link` 활성화 |
-| `METRICS_ENABLED` | | `false` | `/metrics` 엔드포인트 활성화 |
-| `METRICS_REQUIRE_AUTH` | | `false` | `/metrics` 에 Bearer 인증 강제. public 배포에서는 `true` 필수 |
-| `EMAIL_SERVICE_LOG_FORMAT` | | `text` | `json` 시 구조화 로그 |
-| `EMAIL_TEST_CAPTURE_DIR` | | unset | 설정 시 SMTP 미접속, `.eml` 파일 저장 (테스트용) |
+### What it is *not*
 
-### Webhook signature: V1 → V2 migration
+- **Not a mail server** — it talks to your existing SMTP provider (Gmail, SES
+  SMTP, an internal relay, etc.). It does not accept inbound mail or handle MX.
+- **Not a full auth platform** — it sends auth emails; it does not generate,
+  store, verify, or expire login tokens, manage sessions, or store users.
+- **Not a marketing/bulk-email platform** — no bounce processing, suppression
+  lists, analytics dashboards, or deliverability tooling.
+- **Not a managed-email replacement** for Resend, Postmark, SendGrid, Mailgun,
+  or SES — those bring deliverability, reputation, and SLAs that a small
+  self-hosted gateway cannot match. See [alternatives](docs/alternatives.md).
 
-본 서비스는 webhook payload 에 두 가지 서명 헤더를 동시 전송한다:
+---
 
-- `X-Email-Service-Signature` (V1): HMAC-SHA256(secret, body) — **replay 공격에 취약**.
-- `X-Email-Service-Signature-V2`: HMAC-SHA256(secret, `"<timestamp>.<body>"`)
-- `X-Email-Service-Timestamp`: Unix epoch seconds
+## Package names
 
-**V2 채택 권장 (수신자 측 마이그레이션 절차)**:
+The repo name, PyPI distribution name, and Python import package differ.
 
-1. `X-Email-Service-Timestamp` 읽기.
-2. `abs(now - timestamp) > 300` (5분) 이면 거부 — replay window 차단.
-3. `hmac_sha256(secret, f"{timestamp}.{body}")` 를 V2 헤더와 constant-time 비교.
-
-V1 헤더는 **향후 major version 에서 제거 예정**. CHANGELOG 참조.
-
-### Release 자동화 (PyPI)
-
-`release.yml` 은 **2-step manual gate** 모델이다. tag push 만으로는 PyPI 에 publish 되지 않는다.
-
-1. **tag push** → `build-and-smoke` job 만 실행. wheel 빌드 + smoke import + tag/version 일치 검증까지만 수행. PyPI 는 건드리지 않는다.
-2. **Actions → `release` → "Run workflow"** (workflow_dispatch) 에서 publish 할 tag (예: `v0.4.0`) 를 입력하고 수동 실행. 이 dispatch 자체가 사람 승인 게이트다. `build-and-smoke` 가 다시 검증된 뒤 `publish` job 이 PyPI 로 업로드한다.
-
-왜 분리: private repo 에서는 GitHub Environment "Required reviewers" UI 가 플랜에 따라 노출되지 않을 수 있어 `environment: pypi` 게이트만으로는 manual approval 을 보장하기 어렵다. workflow_dispatch 트리거 자체를 사람 행동으로 만들어 이 빈틈을 막는다. Environment Required reviewers 가 활성화돼 있다면 그 위에 추가로 얹히는 defense-in-depth.
-
-- 모든 GitHub Actions 는 commit SHA 로 핀 (mutable tag 금지).
-- 잘못된 publish 는 yank 만 가능, 버전명 영구 소진. [`docs/runbooks/pypi-yank-hotfix.md`](docs/runbooks/pypi-yank-hotfix.md) 참조.
-
-### 운영 runbook
-
-장애 / 회전 / 핫픽스 절차:
-
-- [`docs/runbooks/public-deploy-readiness.md`](docs/runbooks/public-deploy-readiness.md)
-- [`docs/runbooks/smtp-outage.md`](docs/runbooks/smtp-outage.md)
-- [`docs/runbooks/webhook-outage.md`](docs/runbooks/webhook-outage.md)
-- [`docs/runbooks/api-key-rotation.md`](docs/runbooks/api-key-rotation.md)
-- [`docs/runbooks/pypi-yank-hotfix.md`](docs/runbooks/pypi-yank-hotfix.md)
-- [`docs/runbooks/smtp-disconnect-uncertain.md`](docs/runbooks/smtp-disconnect-uncertain.md)
-
-## Operations
-
-운영 환경에서 발송 성공률·실패 사유·지연을 관측하기 위한 옵트인 기능들이다. 모두 환경변수로 켤 수 있으며, 기본값은 모두 off — 기존 동작과 100% 호환된다.
-
-### Prometheus 메트릭 (`/metrics`)
-
-| 환경변수 | 기본값 | 설명 |
-|---|---|---|
-| `METRICS_ENABLED` | `false` | `true` 일 때 `GET /metrics` 활성화. `prometheus-client` 설치 필요. |
-| `METRICS_REQUIRE_AUTH` | `false` | `true` 일 때 `/metrics` 호출에도 `Authorization: Bearer $API_KEY` 강제. public 배포에서는 필수. |
-
-활성화:
+| | Name |
+|---|---|
+| Repository / service | `email-service` |
+| PyPI distribution | `hwan-email-service` |
+| Python import | `email_service` |
 
 ```bash
-pip install "hwan-email-service[http]"   # prometheus-client 포함
-export API_KEY=$(openssl rand -hex 32)
-METRICS_ENABLED=true METRICS_REQUIRE_AUTH=true python -m email_service
-curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/metrics
+pip install hwan-email-service
 ```
-
-`METRICS_ENABLED=false` 이거나 `prometheus-client` 가 설치되지 않은 환경에서는 `/metrics` route가 OpenAPI에 보여도 `404 metrics disabled` 를 반환한다.
-
-노출되는 시리즈:
-
-- `email_send_total{result, error_code}` — Counter. `result` 는 `success` / `failure`, `error_code` 는 `crlf_in_header` / `smtp_auth_failed` / `smtp_connection` / `smtp_timeout` / `smtp_transient` / `recipient_refused` / `starttls_unsupported` / `unknown` (`success` 시 빈 문자열).
-- `email_send_duration_seconds` — Histogram. SMTP 호출 한 건의 종단 지연 (초).
-- `email_send_active` — Gauge. 현재 처리 중인 발송 건수.
-- `email_retry_attempts_total{reason}` — Counter. 재시도 시도 횟수 (Phase 4 `max_retries > 0` 일 때).
-- `email_webhook_failed_total` — Counter. webhook 콜백 전달이 최종 실패한 건수.
-
-샘플 출력:
-
-```
-# HELP email_send_total Total email send attempts
-# TYPE email_send_total counter
-email_send_total{result="success",error_code=""} 42.0
-email_send_total{result="failure",error_code="smtp_connection"} 3.0
-email_send_duration_seconds_bucket{le="0.5"} 41.0
-```
-
-권장 알람 (Prometheus):
-
-```yaml
-- alert: EmailFailureRateHigh
-  expr: rate(email_send_total{result="failure"}[5m]) > 0.05
-  for: 10m
-  annotations:
-    summary: "email-service failure rate above 5% for 10 minutes"
-```
-
-### 구조화 로그 (JSON)
-
-| 환경변수 | 기본값 | 설명 |
-|---|---|---|
-| `EMAIL_SERVICE_LOG_FORMAT` | `text` | `json` 일 때 `python-json-logger` 로 JSON 한 줄 로그 출력. |
-| `EMAIL_SERVICE_DEBUG` | `0` | `1` 일 때 `smtplib.set_debuglevel(1)` 활성화 (개발 전용). |
-
-PII 안전성: 수신자 이메일 주소는 절대 평문으로 로그에 남지 않는다. 모든 발송 로그는 SHA-256 해시 앞 8자(`to_hash`) 로 표기되며, `error_code`·`duration_ms`·`message_id`·`request_id` 가 함께 기록된다.
-
-> ⚠️ **보안 주의**: `EMAIL_SERVICE_DEBUG=1` 은 `smtplib` 의 디버그 출력을 stderr 로 보내며, 여기에는 `AUTH PLAIN <base64>` 라인이 포함된다 (즉, 비밀번호가 base64 로 노출). 절대 운영 환경에서는 켜지 말 것. 표준 라이브러리 한계상 이 라인을 안전하게 마스킹할 수 없다.
-
-### 분산 트레이싱 (`X-Request-ID`)
-
-모든 요청은 `X-Request-ID` 헤더를 echo 하며, 헤더가 없으면 UUID 가 자동 발급된다. 이 ID 는 SMTP 발송 로그까지 그대로 전파되어, 게이트웨이 → email-service → SMTP 의 풀 트레이스를 단일 ID 로 grep 할 수 있다.
-
-```bash
-curl -H "Authorization: Bearer $API_KEY" \
-     -H "X-Request-ID: trace-abc-123" \
-     -X POST http://127.0.0.1:8000/send \
-     -d '{"to":"u@t.com","subject":"hi","html_body":"<p>x</p>"}'
-# Response includes: X-Request-ID: trace-abc-123
-```
-
-### SMTP 재시도 (`max_retries`)
-
-라이브러리 모드에서만 사용. 기본값 `0` 으로 기존 동작과 호환된다.
 
 ```python
-from email_service import SmtpSender, SmtpConfig
-
-sender = SmtpSender(
-    SmtpConfig(host="smtp.gmail.com", port=587, user="u", password="p"),
-    max_retries=2,                  # 1 회 시도 + 2 회 재시도 = 최대 3 회
-    backoff_seconds=(1, 5, 25),     # 지수 백오프; 마지막 값으로 클램프
-)
+import email_service
 ```
-
-재시도 대상: `SMTPServerDisconnected`, `SMTPConnectError`, `socket.timeout`, SMTP 4xx 응답. 5xx 영구 실패와 부분 거부(partial refusal) 는 즉시 반환되어 같은 수신자에게 중복 발송되지 않는다. `Message-ID` 는 재시도 전체에서 동일하게 유지된다 (MTA dedup).
-
-각 재시도는 `email_retry_attempts_total{reason}` 카운터를 증가시킨다.
-
-### Test mode — .eml 캡처 (`EMAIL_TEST_CAPTURE_DIR`)
-
-환경변수 `EMAIL_TEST_CAPTURE_DIR` 가 set 되면 SMTP 호출을 건너뛰고 메시지를 `<message_id>.eml` 파일로 디렉토리에 저장한다. 통합 테스트에서 SMTP 없이 메일 내용을 검증할 때 사용.
-
-```bash
-EMAIL_TEST_CAPTURE_DIR=/tmp/outbox pytest tests/
-```
-
-전체 예시는 [examples/integration_test_with_capture.py](examples/integration_test_with_capture.py) 참고.
-
-`dry_run` (HTTP `X-Dry-Run: true`) 과 다름: dry-run 은 페이로드 검증 only (메시지 빌드 안 함), capture mode 는 실제 MIME 메시지를 생성하여 디스크에 저장 (헤더·바디 검증 가능).
-
-### Webhook 콜백 (비동기 발송 통지)
-
-`webhook_url` 을 `POST /send` (또는 `/send/magic-link`, `/send/otp`) 의 body 에 포함하면 발송이 백그라운드로 처리되고 응답은 즉시 `{"sent": false, "status": "accepted"}` 로 반환된다. 최종 결과는 다음 페이로드로 webhook URL 에 POST 된다:
-
-```json
-{
-  "message_id": "<...@host>",
-  "status": "delivered",
-  "error_code": null,
-  "refused": [],
-  "sent_at": "2026-05-15T10:00:00+00:00",
-  "attempts": 1
-}
-```
-
-`webhook_secret` 도 함께 보내면 V2 timestamp 서명과 legacy V1 body-only 서명이 함께 포함된다. 새 receiver는 V2를 먼저 검증해야 한다.
-`webhook_secret` 도 `API_KEY` 와 동일하게 긴 랜덤 값으로 생성하고 secret store 또는 git 밖의 환경변수로 관리한다.
-
-수신자 측 검증 (Python, V2 권장):
-
-```python
-import hashlib
-import hmac
-import time
-
-body = await request.body()
-timestamp = request.headers["X-Email-Service-Timestamp"]
-signature = request.headers["X-Email-Service-Signature-V2"]
-
-now = int(time.time())
-if abs(now - int(timestamp)) > 300:
-    raise ValueError("stale webhook timestamp")
-
-signed = timestamp.encode("ascii") + b"." + body
-expected = "sha256=" + hmac.new(SECRET.encode(), signed, hashlib.sha256).hexdigest()
-if not hmac.compare_digest(signature, expected):
-    raise ValueError("bad webhook signature")
-```
-
-Legacy `X-Email-Service-Signature` 는 `HMAC(secret, body)` 형식이라 캡처된 요청을 시간 제한 없이 replay 할 수 있다. 기존 receiver 호환용으로만 사용하고, public receiver는 timestamp window를 검증하는 V2로 마이그레이션한다.
-
-Webhook 전달 자체는 `(1s, 2s, 5s)` 백오프로 최대 3 회 재시도된다. 최종 실패 시 `email_webhook_failed_total` 메트릭이 증가하며 발송 자체에는 영향을 주지 않는다 (이미 발송 완료).
-
-#### 로컬 webhook 테스트
-
-`docker-compose.dev.yml` 에 포함된 `webhook-sink` (httpbin) 서비스로 페이로드를 즉시 확인할 수 있다:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-export WEBHOOK_SECRET="$(openssl rand -hex 32)"
-curl -H "Authorization: Bearer $API_KEY" \
-     -X POST http://127.0.0.1:8000/send \
-     -H "Content-Type: application/json" \
-     -d "{\"to\":\"u@t.com\",\"subject\":\"hi\",\"html_body\":\"<p>x</p>\",
-          \"webhook_url\":\"http://webhook-sink/post\",\"webhook_secret\":\"$WEBHOOK_SECRET\"}"
-# httpbin echoes the received POST at http://127.0.0.1:8080/post
-docker compose -f docker-compose.dev.yml logs webhook-sink
-```
-
-PowerShell에서 실행할 때는 먼저 `$env:WEBHOOK_SECRET = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Minimum 0 -Maximum 256) })` 로 생성한 뒤 payload의 `webhook_secret` 값에 `$env:WEBHOOK_SECRET` 를 넣는다.
 
 ---
 
-## 사용 방식
-
-| 모드 | 설치 | 실행 | 용도 |
-|---|---|---|---|
-| 라이브러리 | `pip install hwan-email-service` | Python 코드에서 `import email_service` | 같은 프로세스 안에서 메일 발송 |
-| HTTP 서비스 | `pip install "hwan-email-service[http]"` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
-
-설치 명령 전체 예시:
+## Install
 
 ```bash
-# 라이브러리로만 사용 (PyPI)
+# Library mode (no extra deps)
 pip install hwan-email-service
 
-# HTTP 서비스로 띄워서 사용 (PyPI)
+# HTTP service mode (FastAPI + uvicorn)
 pip install "hwan-email-service[http]"
+```
 
-# 아직 PyPI 에 게시 안 된 버전을 미리 받고 싶을 때 (git 직접 설치)
-# (git 설치 시에는 PyPI distribution 이름과 무관하게 동작한다)
-pip install git+https://github.com/hwan96-ai/email-service.git
+Requirements: **Python 3.10+**.
+
+Install the latest unreleased commit straight from git:
+
+```bash
 pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
 
-요구 사항: Python **3.10+**.
-
 ---
 
-## 30초 안에 첫 메일 보내기
+## Quickstart — HTTP service mode
 
-`python -m email_service test` 서브커맨드가 환경변수만으로 SMTP 설정을 검증하고 테스트 메일 한 통을 즉시 발송한다. 발송 결과가 `SendResult` 형태로 stdout 에 떨어진다.
-
-```bash
-# 1) 설치
-pip install hwan-email-service
-
-# 2) 환경변수 (Gmail 예시 — 앱 비밀번호 권장)
-export SMTP_HOST=smtp.gmail.com
-export SMTP_USER=sender@gmail.com
-export SMTP_PASSWORD=app-password
-# API_KEY 는 test 서브커맨드에서는 필요 없음 (HTTP 서버 모드 전용)
-
-# 3) 발송
-python -m email_service test --to me@example.com
-#   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
-#   exit 0 on success, exit 1 on failure (with error_code printed)
-```
-
-자세한 옵션: `python -m email_service test --help`.
-
----
-
-## 빠른 시작
-
-### HTTP 서비스로 띄워 curl 로 테스트
+Run `email-service` as a standalone service. Other apps call it over HTTP with
+a Bearer API key. SMTP credentials live in this service's environment only.
 
 ```bash
-# 1) 설치
 pip install "hwan-email-service[http]"
 
-# 2) 환경변수 설정 (최소)
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
-export API_KEY=$(openssl rand -hex 32)     # 임의의 긴 비밀문자열
+export API_KEY=$(openssl rand -hex 32)
 
-# 3) 기동
 python -m email_service
-#   → INFO:     Uvicorn running on http://127.0.0.1:8000
+# → Uvicorn running on http://127.0.0.1:8000
+```
 
-# 4) 호출 (다른 터미널에서)
+In another terminal:
+
+```bash
 curl -X POST http://127.0.0.1:8000/send \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"to":"user@example.com","subject":"Hi","html_body":"<p>Hello</p>"}'
-#   → {"sent":true}
+# → {"sent":true}
 ```
 
-### Python 라이브러리로 한 줄 발송
+OpenAPI docs: <http://127.0.0.1:8000/docs>.
 
-```python
-from email_service import SmtpSender
-from email_service.sender import SmtpConfig
+Full HTTP endpoint reference, dry-run mode, idempotency, and the Python client
+SDK: [docs/api.md](docs/api.md).
 
-sender = SmtpSender(SmtpConfig(
-    host="smtp.gmail.com", user="sender@gmail.com", password="app-password",
-))
-sender.send("user@example.com", "Hi", "<p>Hello</p>")
+### 30-second SMTP smoke test
+
+If you just want to verify SMTP credentials, skip the HTTP server entirely:
+
+```bash
+export SMTP_HOST=smtp.gmail.com
+export SMTP_USER=sender@gmail.com
+export SMTP_PASSWORD=app-password
+
+python -m email_service test --to me@example.com
+#   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
 ```
+
+Exits `0` on success, `1` on failure with `error_code` printed.
 
 ---
 
-## Docker 로 실행
+## Quickstart — library mode
 
-다른 서비스가 REST 로 호출하는 운영 시나리오라면 `Dockerfile` + `docker-compose.yml` + `.env.example` 이 함께 제공된다. Docker 이미지는 **Python 3.12 slim** 기반이며, 로컬 개발(Python 3.10+) 과 별개이다.
-
-### 1) 환경변수 파일 준비
-
-```bash
-cp .env.example .env
-# 에디터로 .env 열어 SMTP_HOST / SMTP_USER / SMTP_PASSWORD / API_KEY 채움
-# API_KEY 생성: openssl rand -hex 32
-```
-
-`.env` 는 `.gitignore` 되어 있다. 절대 커밋하지 말 것.
-
-### 2) 빌드 & 기동
-
-```bash
-docker compose up -d --build
-```
-
-- 이미지: `python:3.12-slim` 베이스, uid `10001` 의 non-root `app` 유저로 실행.
-- 컨테이너 내부 `HOST=0.0.0.0`, `PORT=8000` (Dockerfile/compose 에 기본 설정).
-- 호스트 `8000` ↔ 컨테이너 `8000` 포트 매핑 (`docker-compose.yml` 의 `ports:`).
-- `docker-compose.yml` 에 `/health` 헬스체크 포함 — `docker compose ps` 에 `healthy` 상태가 뜨며, 기동 후 약 10 초 이내에 초록색으로 전환된다.
-
-### 3) 호출
-
-```bash
-curl -X POST http://127.0.0.1:8000/send \
-  -H "Authorization: Bearer $(grep ^API_KEY .env | cut -d= -f2-)" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"user@example.com","subject":"Hi","html_body":"<p>Hello</p>"}'
-```
-
-### 4) 로그 / 중지
-
-```bash
-docker compose logs -f email-service    # 로그 추적
-docker compose down                     # 정지 및 컨테이너 제거
-```
-
-### 운영 배포 참고
-
-- `docker-compose.yml` 은 편의를 위해 `ports: "8000:8000"` 으로 호스트에 직접 공개한다. **공용 인터넷에는 노출 금지.** 내부망 / VPC / 방화벽 안에 두고 앞단에 Reverse Proxy (nginx, Traefik 등) + TLS 종단을 구성한다.
-- 같은 Docker 네트워크 안의 다른 컨테이너만 호출하면 되는 경우 `ports:` 를 제거하고 `expose: ["8000"]` 로 바꾸면 호스트 포트가 열리지 않는다.
-
----
-
-## 로컬 메일 테스트 (Mailpit)
-
-실제 메일을 발송하지 않고 로컬에서 발송 결과를 눈으로 확인하려면 `docker-compose.dev.yml` 을 쓴다. [Mailpit](https://mailpit.axllent.org/) 이 SMTP 서버 + 웹 UI 를 같이 제공한다.
-
-```bash
-# 1) .env 준비: docker-compose.dev.yml 은 API_KEY 를 .env 에서 읽는다.
-API_KEY=$(openssl rand -hex 32)
-printf "API_KEY=%s\n" "$API_KEY" > .env
-
-# 2) 빌드 & 기동 (email-service + mailpit)
-docker compose -f docker-compose.dev.yml up -d --build
-
-# 3) 헬스체크
-curl http://127.0.0.1:8000/health
-# → {"status":"ok"}
-
-# 4) 메일 발송
-curl -X POST http://127.0.0.1:8000/send/otp \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
-```
-
-PowerShell:
-
-```powershell
-# 1) .env 준비
-$Bytes = [byte[]]::new(32)
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($Bytes)
-$ApiKey = [Convert]::ToHexString($Bytes).ToLower()
-Set-Content .env "API_KEY=$ApiKey"
-
-# 2) 빌드 & 기동
-docker compose -f docker-compose.dev.yml up -d --build
-
-# 3) 헬스체크
-curl.exe http://127.0.0.1:8000/health
-
-# 4) 메일 발송
-curl.exe -X POST http://127.0.0.1:8000/send/otp `
-  -H "Authorization: Bearer $ApiKey" `
-  -H "Content-Type: application/json" `
-  -d '{\"to\":\"user@example.com\",\"user_name\":\"홍길동\",\"code\":\"482901\"}'
-```
-
-발송된 메일은 Mailpit 웹 UI 에서 확인한다:
-
-- Mailpit UI: http://127.0.0.1:8025
-- Mailpit SMTP: `mailpit:1025` (컨테이너 내부), `127.0.0.1:1025` (호스트)
-
-개발용 compose 는 SMTP 설정을 Mailpit/no-auth 값으로 제공하지만, `API_KEY` 는 `.env` 에서 반드시 읽는다. `.env` 는 git에 커밋하지 않는다.
-
-| 변수 | 값 | 비고 |
-|---|---|---|
-| `SMTP_HOST` | `mailpit` | |
-| `SMTP_PORT` | `1025` | |
-| `SMTP_USER` / `SMTP_PASSWORD` | 빈 값 | Mailpit 은 SMTP AUTH 가 필요 없다 |
-| `SMTP_USE_TLS` | `false` | |
-| `API_KEY` | `.env` 에서 필수 | `openssl rand -hex 32` 등으로 생성 |
-| `MAGIC_LINK_BASE_URL` | `http://localhost:3000` | |
-
-정지:
-
-```bash
-docker compose -f docker-compose.dev.yml down
-```
-
----
-
-## HTTP API 사용법
-
-### 엔드포인트
-
-`POST` 요청은 모두 `Authorization: Bearer $API_KEY` 헤더가 필요하다. 성공 시 `200 {"sent": true}`. `GET /health` 는 인증이 필요 없다.
-
-| 메서드 | 경로 | 요청 body | 인증 | 설명 |
-|---|---|---|---|---|
-| `GET` | `/health` | — | 불필요 | 헬스체크. `200 {"status": "ok"}` 반환. 로드밸런서/Docker healthcheck 용 |
-| `POST` | `/send` | `to, subject, html_body, text_body?, cc?, bcc?` | 필요 | 일반 메일 |
-| `POST` | `/send/magic-link` | `to, user_name, token` | 필요 | 매직링크 메일 (`MAGIC_LINK_BASE_URL` 필요) |
-| `POST` | `/send/otp` | `to, user_name, code` | 필요 | OTP 메일 |
-
-### 에러 코드
-
-| 코드 | 의미 |
-|---|---|
-| `401` | API 키 누락/오류 |
-| `422` | 필수 필드 누락, 또는 헤더 (`to`/`subject`/`cc`/`bcc`) 에 CRLF 포함 (헤더 인젝션 차단) |
-| `502` | SMTP 연결 또는 발송 실패 |
-| `503` | `/send/magic-link` 호출 시 `MAGIC_LINK_BASE_URL` 미설정 |
-
-### curl 호출 예시
-
-**일반 메일 (cc/bcc 포함):**
-```bash
-curl -X POST http://127.0.0.1:8000/send \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "to":"user@example.com",
-        "subject":"Hi",
-        "html_body":"<p>Hello</p>",
-        "text_body":"Hello",
-        "cc":["cc@example.com"],
-        "bcc":["bcc@example.com"]
-      }'
-```
-
-**매직링크 메일:**
-```bash
-curl -X POST http://127.0.0.1:8000/send/magic-link \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"user@example.com","user_name":"홍길동","token":"abc123"}'
-```
-
-**OTP 메일:**
-```bash
-curl -X POST http://127.0.0.1:8000/send/otp \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
-```
-
-### Python 클라이언트 SDK
-
-`email-service[http]` 로 설치하면 `EmailServiceClient` 를 import 해서 바로 쓸 수 있다. Bearer 헤더 자동 부착, dry-run 헤더 자동 전환, 4xx/5xx 시 예외 발생까지 담당한다.
+Import `email_service` directly inside one Python/FastAPI app. Useful when you
+don't need a separate internal HTTP gateway.
 
 ```python
-import os
-
-from email_service.client import EmailServiceClient
-
-with EmailServiceClient(
-    "http://email-service:8000",
-    os.environ["EMAIL_SERVICE_API_KEY"],
-) as client:
-    client.health()
-    # 일반 메일
-    client.send(
-        to="user@example.com",
-        subject="Hi",
-        html_body="<p>Hello</p>",
-        text_body="Hello",
-        cc=["cc@example.com"],
-        bcc=["bcc@example.com"],
-    )
-    # 매직링크 / OTP
-    client.send_magic_link("user@example.com", "홍길동", "abc123")
-    client.send_otp("user@example.com", "홍길동", "482901")
-```
-
-생성자: `EmailServiceClient(base_url, api_key, timeout=10.0)`. context manager 를 지원하며, 직접 `close()` 를 호출해도 된다. 내부적으로 `httpx.Client` 를 사용하므로 `http` extras 가 필요하다.
-
-### Dry-run
-
-메일을 실제로 발송하지 않고 payload 가 유효한지만 확인하고 싶을 때 `X-Dry-Run` 헤더를 쓴다.
-
-- 헤더 값: `true` / `1` / `yes` (대소문자 무시) 는 dry-run 으로 처리된다.
-- 적용 대상: `/send`, `/send/magic-link`, `/send/otp`
-- 동작: API Key 인증과 Pydantic validation 은 그대로 수행되지만, SMTP 는 호출되지 않는다.
-- 응답: `200 {"sent": false, "dry_run": true, "message": "Email payload is valid"}`
-
-```bash
-curl -X POST http://127.0.0.1:8000/send/otp \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "X-Dry-Run: true" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"user@example.com","user_name":"홍길동","code":"482901"}'
-# → {"sent":false,"dry_run":true,"message":"Email payload is valid"}
-```
-
-SDK 에서는 `dry_run=True` 만 넘기면 된다.
-
-```python
-client.send_otp("user@example.com", "홍길동", "482901", dry_run=True)
-```
-
-### 직접 httpx 로 호출
-
-SDK 를 쓰지 않고 raw 로 호출하는 예시.
-
-```python
-import os, httpx
-
-client = httpx.Client(
-    base_url=os.environ["EMAIL_SERVICE_URL"],           # 예: http://email-service:8000
-    headers={"Authorization": f"Bearer {os.environ['EMAIL_API_KEY']}"},
-    timeout=10,
-)
-
-resp = client.post("/send/otp", json={
-    "to": "user@example.com",
-    "user_name": "홍길동",
-    "code": "482901",
-})
-resp.raise_for_status()   # 401/422/502/503 → 예외
-```
-
-### Node.js (fetch)
-
-언어 무관하게 REST 로 호출 가능. Node 18+ 기본 내장 `fetch` 예시.
-
-```javascript
-const resp = await fetch("http://email-service:8000/send/otp", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${process.env.EMAIL_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    to: "user@example.com",
-    user_name: "홍길동",
-    code: "482901",
-  }),
-});
-
-if (!resp.ok) {
-  throw new Error(`email-service failed: ${resp.status}`);
-}
-
-console.log(await resp.json());   // { sent: true }
-```
-
----
-
-## Python 라이브러리로 사용하기
-
-패키지의 공개 API:
-
-```python
-from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier, TemplateNotifier
-from email_service.sender import SmtpConfig
-from email_service.notifiers import Notifier   # 커스텀 Notifier 만들 때
-```
-
-### `SmtpConfig`
-
-SMTP 연결 설정. 단순 dataclass.
-
-```python
-from email_service.sender import SmtpConfig
-
-config = SmtpConfig(
-    host="smtp.gmail.com",   # 기본: smtp.gmail.com
-    port=587,                # 기본: 587
-    user="sender@gmail.com", # 로그인 계정
-    password="app-password", # 앱 비밀번호
-    from_addr="",            # 발신자 주소 (비우면 user 와 동일)
-    use_tls=True,            # STARTTLS 사용 여부 (기본: True)
-    timeout=10,              # 연결 타임아웃 초 (기본: 10)
-)
-```
-
-### `SmtpSender`
-
-HTML 이메일을 발송하는 저수준 sender.
-
-```python
-from email_service import SmtpSender
+from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
 from email_service.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
@@ -759,214 +147,157 @@ sender = SmtpSender(SmtpConfig(
     password="app-password",
 ))
 
-success = sender.send(
-    to="recipient@example.com",
-    subject="제목",
-    html_body="<h1>본문</h1>",
-    text_body="본문",              # 선택: plain-text 대체본 (multipart/alternative 의 fallback)
-    cc=["cc@example.com"],         # 선택
-    bcc=["bcc@example.com"],       # 선택
-)
-# 반환: True (성공) / False (실패, 로그에 에러 기록)
-# 헤더 값(to/subject/from/cc/bcc)에 CR/LF가 포함되면 발송 거부 (CRLF 인젝션 차단)
-```
+# One-off HTML mail
+sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
-### `MagicLinkNotifier`
-
-비밀번호 설정 매직링크 이메일.
-
-```python
-from email_service import SmtpSender, MagicLinkNotifier
-from email_service.sender import SmtpConfig
-
-sender = SmtpSender(SmtpConfig(
-    host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
-))
-
-notifier = MagicLinkNotifier(
-    sender,
-    base_url="https://myapp.com",      # 필수: 프론트엔드 URL
-    path="/set-password",              # 선택: 링크 경로 (기본)
-    subject_prefix="[MyApp] ",         # 선택: 메일 제목 접두어
-    expire_minutes=15,                 # 선택: 본문에 표시할 유효시간 (기본: 15)
+# Magic link
+MagicLinkNotifier(sender, base_url="https://myapp.com").send(
+    "user@example.com", "User Name", "abc123token",
 )
 
-# payload = 토큰 문자열. 토큰은 URL 인코딩되어 링크에 포함된다.
-notifier.send("user@example.com", "홍길동", "abc123token")
-# → 본문에 https://myapp.com/set-password?token=abc123token 링크 삽입
+# OTP
+OTPNotifier(sender).send("user@example.com", "User Name", "482901")
 ```
 
-### `OTPNotifier`
-
-일회용 인증코드 이메일.
-
-```python
-from email_service import SmtpSender, OTPNotifier
-from email_service.sender import SmtpConfig
-
-sender = SmtpSender(SmtpConfig(
-    host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
-))
-
-notifier = OTPNotifier(sender, subject_prefix="[MyApp] ", expire_minutes=5)
-
-# payload = OTP 코드 문자열
-notifier.send("user@example.com", "홍길동", "482901")
-# → 본문에 482901 코드를 큰 글씨로 표시
-```
-
-### `TemplateNotifier`
-
-임의의 제목/HTML 템플릿으로 메일을 렌더링해 발송. `(user_name, payload)` 고정 시그니처가 맞지 않는 케이스용.
-
-```python
-from email_service import SmtpSender, TemplateNotifier
-from email_service.sender import SmtpConfig
-
-sender = SmtpSender(SmtpConfig(host="smtp.gmail.com", user="noreply@x.com", password="..."))
-
-notifier = TemplateNotifier(
-    sender,
-    subject="[MyApp] {order_id} 주문이 접수되었습니다",
-    html_template="<p>{user_name}님, 주문 {order_id}번이 접수되었습니다. 금액: {amount}원</p>",
-    text_template="{user_name}님, 주문 {order_id}번 접수. 금액: {amount}원",  # 선택
-    autoescape=True,   # 기본 True — HTML 본문의 context 값만 html.escape 처리
-)
-
-notifier.send(
-    "user@example.com",
-    user_name="홍길동", order_id="A-1024", amount="45,000",
-)
-```
-
-- 템플릿은 `str.format` 문법. 플레이스홀더 (`{key}`) 는 `send(**context)` 의 키워드와 매칭.
-- `autoescape=True` 에서 **HTML 템플릿의 context 값만** 이스케이프된다. subject/text_template 은 HTML 컨텍스트가 아니므로 이스케이프하지 않음.
-
-### 커스텀 Notifier
-
-`Notifier` 를 상속하면 새 템플릿을 쉽게 추가할 수 있다.
-
-```python
-from html import escape
-
-from email_service.notifiers import Notifier
-from email_service.sender import SmtpSender
-
-class WelcomeNotifier(Notifier):
-    def __init__(self, sender: SmtpSender, *, company_name: str = ""):
-        super().__init__(sender)
-        self._company = company_name
-
-    def send(self, to_email: str, user_name: str, payload: str) -> bool:
-        safe_company = escape(self._company)
-        safe_name = escape(user_name)
-        safe_payload = escape(payload)
-        subject = f"{self._company} 가입을 환영합니다"
-        html = f"<h1>{safe_name}님, 환영합니다!</h1><p>{safe_company}: {safe_payload}</p>"
-        return self._sender.send(to_email, subject, html)
-```
-
-커스텀 HTML 템플릿에서 `user_name`, `payload`, 주문명, 조직명처럼 호출자나 사용자에게서 온 값은 HTML에 넣기 전에 반드시 escape 한다. `TemplateNotifier(autoescape=True)` 는 HTML context 값을 자동 escape 하지만, 직접 만든 `Notifier` 는 작성자가 책임져야 한다.
+Full library API (`SmtpSender`, `MagicLinkNotifier`, `OTPNotifier`,
+`TemplateNotifier`, custom notifiers, retries): [docs/api.md](docs/api.md#library-mode).
 
 ---
 
-## 환경변수
+## Security — read before deploying
 
-HTTP 서비스 모드 (`python -m email_service`) 에서 사용한다. 라이브러리 모드에서는 무관하다.
+`email-service` is designed as an **internal** service. A self-hosted auth
+email service can be abused if exposed incorrectly. Treat the following as
+hard requirements before any production deploy:
 
-### 필수
+- **Do not expose directly to the public internet.** Put it behind a reverse
+  proxy or API gateway on a private network / VPC.
+- **Terminate TLS at the edge** (nginx, Traefik, your gateway).
+- **Rate-limit failed auth attempts at the edge.** The app's built-in
+  per-bearer rate limit applies to *authenticated* requests; it does not
+  protect against blind Bearer-token guessing.
+- **Protect `/docs` and `/metrics`** — either disable at the edge or require
+  auth. Set `METRICS_REQUIRE_AUTH=true` for `/metrics`.
+- **Store `API_KEY`, `WEBHOOK_SECRET`, and SMTP credentials in environment
+  variables or a secret manager.** Generate `API_KEY` with
+  `openssl rand -hex 32`. Never commit them.
 
-| 이름 | 설명 |
+**Trust boundary:** this service sends auth emails. It does **not** generate,
+store, verify, or expire login tokens. The caller is responsible for token
+entropy (at least `secrets.token_urlsafe(32)`), expiration, single-use
+enforcement, replay protection, and account-state checks.
+
+For the full production checklist, see [docs/deployment.md](docs/deployment.md).
+Vulnerability reporting: [SECURITY.md](SECURITY.md).
+
+---
+
+## Docker
+
+```bash
+cp .env.example .env
+# Edit .env: set SMTP_HOST / SMTP_USER / SMTP_PASSWORD / API_KEY
+#   API_KEY=$(openssl rand -hex 32)
+
+docker compose up -d --build
+curl http://127.0.0.1:8000/health   # → {"status":"ok"}
+```
+
+The provided `docker-compose.yml` publishes `8000:8000` on the host for
+convenience. **Do not expose this port to the public internet** — see the
+deployment guide for production hardening.
+
+Local development with [Mailpit](https://mailpit.axllent.org/) (no real SMTP
+needed):
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+# Mailpit UI: http://127.0.0.1:8025
+```
+
+---
+
+## Configuration
+
+Required env vars: `SMTP_HOST`, `API_KEY`.
+
+The service fails fast at startup if required vars are missing.
+
+Full env-var reference (rate limits, idempotency, webhook SSRF allowlist,
+metrics auth, structured logs, retry tuning): [docs/configuration.md](docs/configuration.md).
+
+A working `.env.example` is included in the repo root.
+
+---
+
+## Webhooks (async send)
+
+Pass `webhook_url` in a `/send*` request body to receive the delivery result
+asynchronously. The service signs the payload with both a legacy V1 header and
+a V2 timestamp-bound header; new receivers should validate V2.
+
+Webhook payload format, signature verification, the V1 → V2 migration, and
+local testing with `docker-compose.dev.yml`: [docs/webhooks.md](docs/webhooks.md).
+
+---
+
+## Observability
+
+Opt-in features, all off by default:
+
+- **Prometheus metrics** at `/metrics` (`METRICS_ENABLED=true`,
+  `METRICS_REQUIRE_AUTH=true` recommended).
+- **Structured JSON logs** (`EMAIL_SERVICE_LOG_FORMAT=json`). Recipient
+  addresses are hashed (SHA-256, first 8 chars) — never logged in plaintext.
+- **`X-Request-ID` propagation** end-to-end from gateway → email-service →
+  SMTP send logs.
+- **SMTP retries** with bounded exponential backoff (library mode,
+  `max_retries=N`).
+
+Full operations guide: [docs/operations.md](docs/operations.md).
+
+---
+
+## Examples
+
+End-to-end integration snippets for common Python frameworks:
+
+- [examples/fastapi_integration.py](examples/fastapi_integration.py)
+- [examples/django_integration.py](examples/django_integration.py)
+- [examples/flask_integration.py](examples/flask_integration.py)
+- [examples/integration_test_with_capture.py](examples/integration_test_with_capture.py)
+  — `.eml` capture mode for integration tests without a real SMTP server.
+
+---
+
+## When to use what
+
+| If you need… | Use |
 |---|---|
-| `SMTP_HOST` | SMTP 서버 호스트 (예: `smtp.gmail.com`) |
-| `API_KEY` | 클라이언트가 `Authorization: Bearer` 로 보내는 공유 비밀 키 |
+| Managed deliverability, bounces, SLA, dashboards | Resend / Postmark / SendGrid / Mailgun / Amazon SES |
+| Full user/session/RBAC/password flows | Supabase Auth, Ory Kratos, Keycloak, Authentik, Appwrite |
+| A mail library inside one FastAPI app | [fastapi-mail](https://github.com/sabuhish/fastapi-mail) |
+| An internal HTTP gateway that keeps your existing SMTP credentials out of every app | **email-service** |
 
-필수 환경변수가 비어 있으면 기동 즉시 `RuntimeError` 로 실패한다 (fail-fast). `SMTP_USER` / `SMTP_PASSWORD` 는 Mailpit, MailHog, 사내 no-auth relay처럼 SMTP AUTH가 없는 서버를 지원하기 위해 선택값이다.
-
-### 선택
-
-| 이름 | 기본값 | 설명 |
-|---|---|---|
-| `SMTP_PORT` | `587` | SMTP 포트 |
-| `SMTP_USER` | `""` | SMTP 로그인 계정. Mailpit 같은 no-auth SMTP에서는 비워 둔다 |
-| `SMTP_PASSWORD` | `""` | SMTP 비밀번호 / 앱 비밀번호. Mailpit 같은 no-auth SMTP에서는 비워 둔다 |
-| `SMTP_FROM` | `SMTP_USER` 와 동일 | 발신자 주소 |
-| `SMTP_USE_TLS` | `true` | STARTTLS 사용 여부 (`false` 로 설정 시 비활성) |
-| `MAGIC_LINK_BASE_URL` | — | `/send/magic-link` 엔드포인트 활성화용 프론트엔드 URL. 미설정 시 해당 엔드포인트는 `503` 반환 |
-| `HOST` | `127.0.0.1` | uvicorn 바인딩 호스트. 로컬 `python -m email_service` 기본값은 `127.0.0.1` (루프백). Docker 실행 시에는 컨테이너 밖에서 접근 가능해야 하므로 `0.0.0.0` 을 사용한다 (제공된 `Dockerfile` / `docker-compose.yml` 이 이미 `0.0.0.0` 으로 설정) |
-| `PORT` | `8000` | uvicorn 바인딩 포트 |
+A longer comparison, including self-hosted email platforms, lives in
+[docs/alternatives.md](docs/alternatives.md).
 
 ---
 
-## 보안 및 운영 주의사항
-
-- **내부망 전제** — 로컬 `python -m email_service` 기본 `HOST=127.0.0.1`. 제공되는 `docker-compose.yml` 은 편의를 위해 `ports: "8000:8000"` 으로 호스트에 공개하지만, **운영에서 이 포트를 공용 인터넷에 직접 노출하지 말 것**. 내부망·VPC·방화벽 뒤에 두고 앞단에 Reverse Proxy / TLS 종단 / WAF 를 구성한다. 외부 완전 차단이 필요하면 `docker-compose.yml` 의 `ports:` 를 `expose:` 로 바꾸면 같은 compose 네트워크의 다른 컨테이너만 접근하게 된다.
-- **단일 API 키** — 모든 호출자가 같은 키를 공유한다. 호출자별 구분이 필요하면 키를 분리하거나 리버스 프록시 레벨에서 인증을 추가한다.
-- **CRLF 헤더 인젝션** — `SmtpSender` 와 HTTP API Pydantic 모델 양쪽에서 `to`/`subject`/`from`/`cc`/`bcc` 의 CR/LF 를 차단한다. 사용자 입력을 그대로 넘겨도 안전하다.
-- **HTML 이스케이프** — 내장 Notifier 들은 user_name, token, code, context 를 기본적으로 `html.escape` 처리한다. HTML 구조 자체를 사용자 입력으로 만들지는 말 것.
-- **자격증명 관리** — `SMTP_PASSWORD`, `API_KEY` 는 .env / secret store 등 외부에 보관하고 저장소에 커밋하지 않는다.
-- **운영 API key** — 짧거나 추측 가능한 키를 쓰지 말고, 길고 랜덤한 값을 배포 플랫폼 secret으로 주입한다. 앱은 non-empty 여부만 fail-fast로 확인하므로 강도와 회전은 운영자가 책임진다.
-- **인증 실패 rate limit** — 앱 내부 rate limit은 인증된 요청 기준이다. 잘못된 Bearer 토큰 반복 시도는 reverse proxy/API gateway/WAF에서 제한한다.
-- **Metrics 공개 금지** — `METRICS_ENABLED=true` 로 운영할 때는 `METRICS_REQUIRE_AUTH=true` 를 함께 설정하고, 가능하면 내부망에서만 scrape 한다.
-- **의존성 고정** — 제공 Dockerfile은 간단한 예시라 `pip install ".[http]"` 로 설치한다. 운영 이미지는 CI에서 검증한 constraints/lock 파일로 transitive dependency를 고정해 빌드하는 것을 권장한다.
-- **OpenAPI 스펙** — 기본 활성화된 `/docs` (Swagger UI), `/openapi.json` 에서 조회 가능. 운영에서 불필요하다면 외부 노출 전에 앞단에서 차단한다.
-
----
-
-## Demo / screenshots
-
-이 저장소에는 아직 실제 스크린샷 asset을 커밋하지 않았다. 공개 README에 이미지를 추가할 때는 실제 실행 화면만 사용한다.
-
-권장 캡처:
-
-- Swagger/OpenAPI docs: `http://127.0.0.1:8000/docs`
-- `/send/otp` 성공 요청과 `{"sent": true, ...}` 응답
-- `docker compose -f docker-compose.dev.yml ps` 에서 `email-service-dev` 와 `mailpit` 이 healthy/running인 화면
-- Mailpit UI(`http://127.0.0.1:8025`)에서 실제로 수신된 OTP 또는 magic-link 이메일 preview
-
----
-
-## 개발 및 테스트
+## Development
 
 ```bash
 git clone https://github.com/hwan96-ai/email-service.git
 cd email-service
 
-# 개발 의존성 설치 (pytest, httpx)
-pip install -e ".[dev]"
-
-# HTTP 모드 테스트까지 같이 돌리려면 http extras 도
 pip install -e ".[dev,http]"
-
-# 전체 테스트
 python -m pytest tests/ -v
-
-# 일부만
-python -m pytest tests/test_email_service.py -v   # 코어 유닛 테스트
-python -m pytest tests/test_api.py -v             # HTTP API 통합 테스트
 ```
 
-테스트는 실제 SMTP 서버에 연결하지 않는다 (`smtplib.SMTP` 를 mock 처리).
+Tests do not connect to a real SMTP server (`smtplib.SMTP` is mocked).
 
 ---
 
-## 프로젝트 구조
+## License
 
-```
-email-service/
-├── email_service/
-│   ├── __init__.py        # 공개 API re-export (SmtpSender, *Notifier)
-│   ├── __main__.py        # `python -m email_service` 진입점 (uvicorn 기동)
-│   ├── api.py             # FastAPI 앱 (create_app) + Pydantic 모델 + 인증 + dry-run
-│   ├── client.py          # EmailServiceClient — HTTP SDK (httpx 기반)
-│   ├── sender.py          # SmtpConfig, SmtpSender — SMTP 발송 코어
-│   └── notifiers.py       # Notifier(ABC), MagicLinkNotifier, OTPNotifier, TemplateNotifier
-├── tests/
-│   ├── test_email_service.py   # sender + notifier 유닛 테스트
-│   ├── test_api.py             # HTTP API 통합 테스트
-│   └── test_client.py          # EmailServiceClient SDK 테스트
-├── docker-compose.yml         # 운영용 compose
-├── docker-compose.dev.yml     # 개발용 compose (Mailpit 포함)
-├── pyproject.toml             # 패키지 메타 + optional extras (dev, http)
-└── README.md
-```
+[MIT](LICENSE).
