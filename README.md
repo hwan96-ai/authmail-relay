@@ -201,7 +201,7 @@ V1 헤더는 **향후 major version 에서 제거 예정**. CHANGELOG 참조.
 활성화:
 
 ```bash
-pip install "email-service[http]"   # prometheus-client 포함
+pip install "hwan-email-service[http]"   # prometheus-client 포함
 export API_KEY=$(openssl rand -hex 32)
 METRICS_ENABLED=true METRICS_REQUIRE_AUTH=true python -m email_service
 curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/metrics
@@ -357,21 +357,22 @@ PowerShell에서 실행할 때는 먼저 `$env:WEBHOOK_SECRET = -join ((1..32) |
 
 | 모드 | 설치 | 실행 | 용도 |
 |---|---|---|---|
-| 라이브러리 | `pip install email-service` | Python 코드에서 `import` | 같은 프로세스 안에서 메일 발송 |
-| HTTP 서비스 | `pip install "email-service[http]"` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
+| 라이브러리 | `pip install hwan-email-service` | Python 코드에서 `import email_service` | 같은 프로세스 안에서 메일 발송 |
+| HTTP 서비스 | `pip install "hwan-email-service[http]"` | `python -m email_service` | 다른 서비스가 REST 로 호출 |
 
 설치 명령 전체 예시:
 
 ```bash
 # 라이브러리로만 사용 (PyPI)
-pip install email-service
+pip install hwan-email-service
 
 # HTTP 서비스로 띄워서 사용 (PyPI)
-pip install "email-service[http]"
+pip install "hwan-email-service[http]"
 
 # 아직 PyPI 에 게시 안 된 버전을 미리 받고 싶을 때 (git 직접 설치)
+# (git 설치 시에는 PyPI distribution 이름과 무관하게 동작한다)
 pip install git+https://github.com/hwan96-ai/email-service.git
-pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
+pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
 ```
 
 요구 사항: Python **3.10+**.
@@ -384,7 +385,7 @@ pip install "email-service[http] @ git+https://github.com/hwan96-ai/email-servic
 
 ```bash
 # 1) 설치
-pip install email-service
+pip install hwan-email-service
 
 # 2) 환경변수 (Gmail 예시 — 앱 비밀번호 권장)
 export SMTP_HOST=smtp.gmail.com
@@ -408,7 +409,7 @@ python -m email_service test --to me@example.com
 
 ```bash
 # 1) 설치
-pip install "email-service[http]"
+pip install "hwan-email-service[http]"
 
 # 2) 환경변수 설정 (최소)
 export SMTP_HOST=smtp.gmail.com

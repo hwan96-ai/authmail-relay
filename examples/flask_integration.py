@@ -1,7 +1,7 @@
 """Flask integration example: send a magic-link on signup.
 
 Run:
-    pip install flask email-service
+    pip install flask hwan-email-service
     SMTP_HOST=localhost SMTP_PORT=1025 python examples/flask_integration.py
 
 The MagicLinkNotifier is constructed once at app startup and reused per request.

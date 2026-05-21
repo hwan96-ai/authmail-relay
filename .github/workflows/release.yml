@@ -13,7 +13,9 @@ name: release
 # the workflow_dispatch invocation itself the audited human action.
 #
 # Required maintainer setup (one-time):
-#   1. Register the `email-service` project name on PyPI.
+#   1. Register the `hwan-email-service` project name on PyPI. (The
+#      GitHub repo is still `email-service`; only the PyPI distribution
+#      name differs to avoid conflict with an existing PyPI project.)
 #   2. Configure a Trusted Publisher mapping under "Publishing" for this
 #      GitHub repo + the `release` workflow + `pypi` environment.
 #      Docs: https://docs.pypi.org/trusted-publishers/
@@ -134,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/email-service
+      url: https://pypi.org/p/hwan-email-service
     permissions:
       # id-token write is required for PyPI Trusted Publisher OIDC exchange.
       # Kept isolated to THIS job so the build-and-smoke job runs with
