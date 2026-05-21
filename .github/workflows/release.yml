@@ -52,18 +52,21 @@ jobs:
     steps:
       - name: Resolve ref to build
         id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            REF="${{ inputs.tag }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            REF="$INPUT_TAG"
           else
             REF="${GITHUB_REF##*/}"
           fi
-          case "$REF" in
-            v*) ;;
-            *) echo "::error::Ref '$REF' does not match v* pattern"; exit 1 ;;
-          esac
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          if [[ ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([._-][A-Za-z0-9]+)*$ ]]; then
+            echo "::error::Ref '$REF' must be a safe semantic version tag like v0.4.0"
+            exit 1
+          fi
+          printf 'ref=%s\n' "$REF" >> "$GITHUB_OUTPUT"
 
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -100,9 +103,11 @@ jobs:
           "
 
       - name: Verify tag matches package version
+        env:
+          REF_TO_VERIFY: ${{ steps.ref.outputs.ref }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.ref.outputs.ref }}"   # e.g. v0.4.0
+          TAG="$REF_TO_VERIFY"                 # e.g. v0.4.0
           TAG_VER="${TAG#v}"                    # e.g. 0.4.0
           PKG_VER=$(/tmp/smoke/bin/python -c "import email_service; print(email_service.__version__)")
           echo "tag=$TAG_VER pkg=$PKG_VER"
