@@ -180,6 +180,7 @@ V1 헤더는 **향후 major version 에서 제거 예정**. CHANGELOG 참조.
 
 장애 / 회전 / 핫픽스 절차:
 
+- [`docs/runbooks/public-deploy-readiness.md`](docs/runbooks/public-deploy-readiness.md)
 - [`docs/runbooks/smtp-outage.md`](docs/runbooks/smtp-outage.md)
 - [`docs/runbooks/webhook-outage.md`](docs/runbooks/webhook-outage.md)
 - [`docs/runbooks/api-key-rotation.md`](docs/runbooks/api-key-rotation.md)
