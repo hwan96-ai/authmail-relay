@@ -6,7 +6,9 @@
 
 > 자체 SMTP를 사용하는 Python/FastAPI 팀을 위한 작은 셀프호스팅 인증 메일 서비스.
 
-언어: [English](README.md) · **한국어** · [HTML Usage Guide](docs/usage.html) · [한국어 사용 가이드](docs/usage.ko.html)
+언어: [English](README.md) · **한국어** · [HTML Usage Guide](https://hwan96-ai.github.io/email-service/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/email-service/usage.ko.html)
+
+<sub>HTML 가이드는 GitHub Pages에서 웹페이지로 열립니다.</sub>
 
 `email-service` 는 팀이 보유한 SMTP 계정을 통해 **매직 링크(magic link)**, **OTP**,
 **비밀번호 재설정(password reset)** 메일을 보내는 작고 셀프호스팅 가능한 서비스다.
