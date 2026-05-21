@@ -1,7 +1,5 @@
 """SSRF defense for user-provided callback URLs (webhook_url).
 
-P0-2 from gate-code-2026-05-16-001 / L-SEED-03 in .claude/learnings/index.md.
-
 Validates that a URL is safe to fetch server-side:
 - Scheme must be http or https.
 - Hostname must not resolve to loopback, link-local, private, multicast,

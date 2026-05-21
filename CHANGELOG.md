@@ -26,12 +26,10 @@ Maintenance release. **No API or behavior changes.** Repackages `0.4.0` with pub
 ### Public release readiness
 
 - Repository hardened for public release: `LICENSE`, `SECURITY.md`, `.github/dependabot.yml`, public-facing CI workflow, README repositioned around the self-hosted SMTP / magic-link / OTP wedge, Mailpit dev quickstart fixed to match `docker-compose.dev.yml`, weak/example secrets removed from public docs and examples, webhook docs prioritize V2 timestamp signature, production deployment guardrails documented.
-- Claude instructions modularized into `docs/claude/` with `CLAUDE.md` as a short router.
-- `docs/solutions/` knowledge store populated with documented learnings (build-system dep bump validation, `gh` CLI workflow-scope requirement, public-release docs/runtime-config alignment).
 
 ### Notes
 
-- No published PyPI release yet for this version. Publishing requires a separate human-controlled step: complete PyPI Trusted Publisher setup, push `v0.4.1` tag from merged master, then manually dispatch the `release` workflow with `tag=v0.4.1`.
+- Publishing to PyPI uses the manual 2-step gate in `release.yml`: push the `v0.4.1` tag from `master`, then manually dispatch the `release` workflow with `tag=v0.4.1` from the Actions UI.
 
 ## [0.4.0] - 2026-05-18
 
