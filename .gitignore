@@ -6,3 +6,7 @@ dist/
 build/
 .pytest_cache/
 .env
+.gstack/
+영업_40명_추출.json
+
+.claude/

@@ -53,7 +53,7 @@ Accepts `{"true", "1", "yes"}` case-insensitively (`.strip().lower()`). Matches 
 ### [INFO] (confidence: 9/10) .dockerignore:3-5 — `.env` excluded from image
 `.env` and `.env.*` are excluded (with `!.env.example` exception). No SMTP credential leakage into the built image. Verified.
 
-### [INFO] (confidence: 8/10) docker-compose.dev.yml:12 — `API_KEY: dev-secret` hardcoded
+### [INFO] (confidence: 8/10) docker-compose.dev.yml:12 — `API_KEY: <redacted-weak-token>` hardcoded
 Acceptable for the dev compose file (it's named `.dev.yml` and points at Mailpit). Ensure CI / docs never reuse this value for non-dev. README already calls this out.
 
 ### [INFO] (confidence: 8/10) email_service/client.py:32 — Bearer header constructed via f-string

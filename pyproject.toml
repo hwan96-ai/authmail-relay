@@ -5,12 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "email-service"
 version = "0.4.0"
-description = "Reusable SMTP email service with pluggable notifiers (magic-link, OTP)"
+description = "Self-hosted auth email service for Python/FastAPI teams using their own SMTP"
+readme = "README.md"
 requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "email-service maintainers" }]
+keywords = ["email", "smtp", "fastapi", "magic-link", "otp", "transactional-email"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Email",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = []
 
-# TODO: generate a `requirements.lock` (e.g. via `uv lock` or `pip-compile`) to
-# pin transitive dependencies once a lock-file tool is available in CI.
+# Production deploys should build with pinned constraints, such as a generated
+# requirements.lock from uv lock or pip-compile.
 [tool.setuptools.packages.find]
 include = ["email_service*"]
 exclude = ["tests*", "examples*", "skills*", "roadmap*", "reports*", ".claude*"]
@@ -24,3 +41,9 @@ http = [
     "prometheus-client>=0.20",
     "python-json-logger>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hwan96-ai/email-service"
+Repository = "https://github.com/hwan96-ai/email-service"
+Issues = "https://github.com/hwan96-ai/email-service/issues"
+Changelog = "https://github.com/hwan96-ai/email-service/blob/main/CHANGELOG.md"
