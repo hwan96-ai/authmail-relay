@@ -9,4 +9,11 @@ build/
 .gstack/
 영업_40명_추출.json
 
-.claude/
+# Internal agent artifacts (Claude Code, Compound, Plan→Generate→Evaluate pipeline)
+/.claude/
+/CLAUDE.md
+/docs/claude/
+/docs/solutions/
+/SPEC.md
+/DONE.md
+/EVAL.md
