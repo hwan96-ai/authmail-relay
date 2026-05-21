@@ -4,9 +4,30 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-22
+
+Maintenance release. **No API or behavior changes.** Repackages `0.4.0` with public-readiness documentation, release pipeline safety hardening, and Dependabot dependency updates that landed after the `v0.4.0` tag was created. Note: the existing `v0.4.0` git tag points to an earlier commit and is intentionally not moved; do not reuse or retag it.
+
 ### Release pipeline
 
 - `release.yml`: split into a 2-step manual gate. Tag push now runs `build-and-smoke` only — it no longer triggers PyPI publish. Publishing requires explicit `workflow_dispatch` from the Actions UI with the target tag as input. Rationale: private repos may not expose Environment "Required reviewers", so the `environment: pypi` gate alone could not guarantee manual approval. The workflow_dispatch invocation IS the human approval gate. Required reviewers, if available, layers on top.
+- `release.yml`: tag/version ref now validated against a safe semantic-version regex before checkout to prevent unsafe ref injection.
+- GitHub Actions pinned to refreshed commit SHAs and bumped via Dependabot: `actions/checkout` → 6.0.2, `actions/setup-python` → 6.2.0, `actions/upload-artifact` → 7.0.1, `actions/download-artifact` → 8.0.1, `pypa/gh-action-pypi-publish` → refreshed pin. SHA pins remain the source of truth; version comments updated to match.
+
+### Build system / dependencies
+
+- `setuptools` build requirement raised to `>=82.0.1`.
+- `pytest` dev requirement raised to `>=9.0.3`.
+
+### Public release readiness
+
+- Repository hardened for public release: `LICENSE`, `SECURITY.md`, `.github/dependabot.yml`, public-facing CI workflow, README repositioned around the self-hosted SMTP / magic-link / OTP wedge, Mailpit dev quickstart fixed to match `docker-compose.dev.yml`, weak/example secrets removed from public docs and examples, webhook docs prioritize V2 timestamp signature, production deployment guardrails documented.
+- Claude instructions modularized into `docs/claude/` with `CLAUDE.md` as a short router.
+- `docs/solutions/` knowledge store populated with documented learnings (build-system dep bump validation, `gh` CLI workflow-scope requirement, public-release docs/runtime-config alignment).
+
+### Notes
+
+- No published PyPI release yet for this version. Publishing requires a separate human-controlled step: complete PyPI Trusted Publisher setup, push `v0.4.1` tag from merged master, then manually dispatch the `release` workflow with `tag=v0.4.1`.
 
 ## [0.4.0] - 2026-05-18
 
