@@ -6,7 +6,9 @@
 
 > Small self-hosted auth-email service for Python/FastAPI teams using their own SMTP.
 
-[한국어 README](README.ko.md) · [HTML Usage Guide](docs/usage.html) · [한국어 사용 가이드](docs/usage.ko.html)
+[한국어 README](README.ko.md) · [HTML Usage Guide](https://hwan96-ai.github.io/email-service/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/email-service/usage.ko.html)
+
+<sub>HTML guides render through GitHub Pages.</sub>
 
 `email-service` is a small, self-hosted service that sends **magic-link**, **OTP**,
 and **password-reset** emails through your own SMTP account. It keeps SMTP
