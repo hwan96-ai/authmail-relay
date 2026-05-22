@@ -167,6 +167,12 @@ def on_supabase_email_hook(payload: dict) -> None:
 
 Notes:
 
+- This is a conceptual adapter. When Supabase provides a full
+  `confirmation_url`, pass that Supabase-generated URL through as the
+  link value and do not generate a replacement token in email-service.
+  The current `/send/magic-link` API parameter is named `token`; the
+  example reuses that existing magic-link API shape and treats the
+  value as Supabase-owned.
 - `token`, `token_hash`, `confirmation_url`, and `action_link` are
   treated as opaque values produced by Supabase. email-service does not
   generate, validate, or expire them.
