@@ -13,11 +13,14 @@ name: release
 # the workflow_dispatch invocation itself the audited human action.
 #
 # Required maintainer setup (one-time):
-#   1. Register the `hwan-email-service` project name on PyPI. (The
-#      GitHub repo is still `email-service`; only the PyPI distribution
-#      name differs to avoid conflict with an existing PyPI project.)
+#   1. Register the `authmail-relay` project name on PyPI. (Pre-rename
+#      releases were published as `hwan-email-service`; that project remains
+#      on PyPI for history but new releases publish under `authmail-relay`.)
 #   2. Configure a Trusted Publisher mapping under "Publishing" for this
-#      GitHub repo + the `release` workflow + `pypi` environment.
+#      GitHub repo (`hwan96-ai/authmail-relay`) + the `release` workflow +
+#      `pypi` environment. The pre-rename `hwan-email-service` Trusted
+#      Publisher mapping must be replaced with a new one pointing at the
+#      `authmail-relay` PyPI project.
 #      Docs: https://docs.pypi.org/trusted-publishers/
 #   3. (Optional, defense-in-depth) In repo Settings → Environments → `pypi`:
 #      enable "Required reviewers" if your plan exposes it. The workflow
@@ -97,11 +100,11 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/smoke/bin/python -c "
-          import email_service
-          from email_service.sender import SmtpSender, SmtpConfig, SendResult
-          from email_service.notifiers import MagicLinkNotifier, OTPNotifier
-          assert email_service.__version__, 'version missing'
-          print('OK', email_service.__version__)
+          import authmail_relay
+          from authmail_relay.sender import SmtpSender, SmtpConfig, SendResult
+          from authmail_relay.notifiers import MagicLinkNotifier, OTPNotifier
+          assert authmail_relay.__version__, 'version missing'
+          print('OK', authmail_relay.__version__)
           "
 
       - name: Verify tag matches package version
@@ -111,7 +114,7 @@ jobs:
           set -euo pipefail
           TAG="$REF_TO_VERIFY"                 # e.g. v0.4.0
           TAG_VER="${TAG#v}"                    # e.g. 0.4.0
-          PKG_VER=$(/tmp/smoke/bin/python -c "import email_service; print(email_service.__version__)")
+          PKG_VER=$(/tmp/smoke/bin/python -c "import authmail_relay; print(authmail_relay.__version__)")
           echo "tag=$TAG_VER pkg=$PKG_VER"
           if [ "$TAG_VER" != "$PKG_VER" ]; then
             echo "::error::Tag $TAG_VER does not match package version $PKG_VER"
@@ -136,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/hwan-email-service
+      url: https://pypi.org/p/authmail-relay
     permissions:
       # id-token write is required for PyPI Trusted Publisher OIDC exchange.
       # Kept isolated to THIS job so the build-and-smoke job runs with

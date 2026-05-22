@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>How to use email-service</title>
+<title>How to use authmail-relay</title>
 <style>
   :root {
     --fg: #1a1a1a;
@@ -136,14 +136,14 @@
 <div class="wrap">
 <header class="top">
   <div class="lang"><a href="index.html">Home</a> · Language: <strong>English</strong> · <a href="usage.ko.html">한국어</a></div>
-  <h1>How to use email-service</h1>
-  <p class="lede">A practical guide for sending auth emails (magic link, OTP, password reset) through your own SMTP, using <code>email-service</code> as an HTTP gateway or Python library.</p>
+  <h1>How to use authmail-relay</h1>
+  <p class="lede">A practical guide for sending auth emails (magic link, OTP, password reset) through your own SMTP, using <code>authmail-relay</code> as an HTTP gateway or Python library.</p>
 </header>
 
 <nav class="toc">
   <strong>Contents</strong>
   <ul>
-    <li><a href="#what">What email-service does</a></li>
+    <li><a href="#what">What authmail-relay does</a></li>
     <li><a href="#when">When to use it</a></li>
     <li><a href="#mode">Choose a mode</a></li>
     <li><a href="#install">Install</a></li>
@@ -159,8 +159,8 @@
   </ul>
 </nav>
 
-<h2 id="what">What email-service does</h2>
-<p><code>email-service</code> is a small self-hosted service that sends transactional auth emails through your own SMTP account. It keeps SMTP credentials and email-template logic out of every app that needs to send auth mail. Other apps call one internal HTTP endpoint with a Bearer API key, or import it as a Python library.</p>
+<h2 id="what">What authmail-relay does</h2>
+<p><code>authmail-relay</code> is a small self-hosted service that sends transactional auth emails through your own SMTP account. It keeps SMTP credentials and email-template logic out of every app that needs to send auth mail. Other apps call one internal HTTP endpoint with a Bearer API key, or import it as a Python library.</p>
 <p>It ships built-in flows for magic links, OTP codes, and password reset, plus an arbitrary HTML/text <code>/send</code> endpoint for any transactional mail.</p>
 
 <h2 id="when">When to use it</h2>
@@ -169,7 +169,7 @@
   <li>You have more than one internal app that needs to send auth email, and you don't want to copy SMTP credentials and HTML templates into each app.</li>
   <li>You want a small service that does one thing — send auth emails — and stays out of your auth/session/token logic.</li>
 </ul>
-<div class="callout">If you need managed deliverability, bounce processing, suppression lists, or domain reputation tooling, use a managed provider (Resend, Postmark, SendGrid, Mailgun, Amazon SES). <code>email-service</code> is not a replacement for those.</div>
+<div class="callout">If you need managed deliverability, bounce processing, suppression lists, or domain reputation tooling, use a managed provider (Resend, Postmark, SendGrid, Mailgun, Amazon SES). <code>authmail-relay</code> is not a replacement for those.</div>
 
 <h2 id="mode">Choose a mode</h2>
 <table>
@@ -183,34 +183,34 @@
 
 <h2 id="install">Install</h2>
 <pre><code># Library mode (no extra deps)
-pip install hwan-email-service
+pip install authmail-relay
 
 # HTTP service mode (FastAPI + uvicorn)
-pip install "hwan-email-service[http]"</code></pre>
+pip install "authmail-relay[http]"</code></pre>
 <p>Requirements: Python 3.10+.</p>
 <p>Install the latest unreleased commit directly from git:</p>
-<pre><code>pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"</code></pre>
+<pre><code>pip install "authmail-relay[http] @ git+https://github.com/hwan96-ai/authmail-relay.git"</code></pre>
 
 <h2 id="naming">Package naming</h2>
 <p>The repo name, PyPI distribution name, and Python import name differ. Use each in the right place.</p>
 <table>
   <thead><tr><th>Context</th><th>Name</th></tr></thead>
   <tbody>
-    <tr><td>Repository / service</td><td><code>email-service</code></td></tr>
-    <tr><td>PyPI distribution (used by <code>pip install</code>)</td><td><code>hwan-email-service</code></td></tr>
-    <tr><td>Python import</td><td><code>email_service</code></td></tr>
+    <tr><td>Repository / service</td><td><code>authmail-relay</code></td></tr>
+    <tr><td>PyPI distribution (used by <code>pip install</code>)</td><td><code>authmail-relay</code></td></tr>
+    <tr><td>Python import</td><td><code>authmail_relay</code></td></tr>
   </tbody>
 </table>
 
 <h2 id="http">Run the HTTP service</h2>
-<pre><code>pip install "hwan-email-service[http]"
+<pre><code>pip install "authmail-relay[http]"
 
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 export API_KEY=$(openssl rand -hex 32)
 
-python -m email_service
+python -m authmail_relay
 # → Uvicorn running on http://127.0.0.1:8000</code></pre>
 <p>OpenAPI docs are served at <code>http://127.0.0.1:8000/docs</code>. Required environment variables are <code>SMTP_HOST</code> and <code>API_KEY</code>; the service fails fast at startup if they are missing.</p>
 
@@ -219,7 +219,7 @@ python -m email_service
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 
-python -m email_service test --to me@example.com</code></pre>
+python -m authmail_relay test --to me@example.com</code></pre>
 <p>Exits <code>0</code> on success, <code>1</code> on failure with an <code>error_code</code>.</p>
 
 <h2 id="endpoints">Calling the endpoints with curl</h2>
@@ -254,12 +254,12 @@ python -m email_service test --to me@example.com</code></pre>
     "token": "$TOKEN",
     "base_url": "https://myapp.com"
   }'</code></pre>
-<p>The caller is responsible for generating, storing, expiring, and single-use enforcing the token. <code>email-service</code> only sends the mail. Generate <code>$TOKEN</code> in your app — e.g. <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — or pass through the token issued by your auth provider.</p>
+<p>The caller is responsible for generating, storing, expiring, and single-use enforcing the token. <code>authmail-relay</code> only sends the mail. Generate <code>$TOKEN</code> in your app — e.g. <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — or pass through the token issued by your auth provider.</p>
 <div class="warn"><strong>Second-terminal trap.</strong> <code>$API_KEY</code> only exists in the shell where it was exported. If <code>curl</code> runs in a second terminal, re-export <code>API_KEY</code> there or load it from <code>.env</code> first.</div>
 
 <h2 id="library">Library examples</h2>
-<pre><code>from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig
+<pre><code>from authmail_relay import SmtpSender, MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com",
@@ -301,12 +301,12 @@ curl http://127.0.0.1:8000/health</code></pre>
   <li><strong>Rate-limit failed auth attempts at the edge.</strong> The built-in per-bearer rate limit only applies to authenticated requests.</li>
   <li><strong>Protect <code>/docs</code> and <code>/metrics</code></strong> — disable them at the edge or require auth. Set <code>METRICS_REQUIRE_AUTH=true</code>.</li>
   <li><strong>Store secrets out of source.</strong> Keep <code>API_KEY</code>, <code>WEBHOOK_SECRET</code>, and SMTP credentials in environment variables or a secret manager. Generate <code>API_KEY</code> with <code>openssl rand -hex 32</code>.</li>
-  <li><strong>Trust boundary.</strong> <code>email-service</code> sends auth emails. It does not generate, store, verify, or expire login tokens. The caller owns token entropy (≥ <code>secrets.token_urlsafe(32)</code>), expiration, single-use enforcement, replay protection, and account-state checks.</li>
+  <li><strong>Trust boundary.</strong> <code>authmail-relay</code> sends auth emails. It does not generate, store, verify, or expire login tokens. The caller owns token entropy (≥ <code>secrets.token_urlsafe(32)</code>), expiration, single-use enforcement, replay protection, and account-state checks.</li>
   <li><strong>Do not log raw tokens, OTP codes, <code>token_hash</code> values, full <code>confirmation_url</code> values, or <code>action_link</code> values in production.</strong> They are bearer secrets. Use <code>dry-run</code> or <code>.eml</code> capture mode for non-production debugging.</li>
 </ul>
 
 <h2 id="ops">Webhooks and observability</h2>
-<p>Pass <code>webhook_url</code> in a <code>/send*</code> request body to receive the delivery result asynchronously. The service signs the payload with both a legacy V1 header and a timestamp-bound V2 header; new receivers should validate V2. See <a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">webhooks.md</a>.</p>
+<p>Pass <code>webhook_url</code> in a <code>/send*</code> request body to receive the delivery result asynchronously. The service signs the payload with both a legacy V1 header and a timestamp-bound V2 header; new receivers should validate V2. See <a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/webhooks.md">webhooks.md</a>.</p>
 <p>Observability is opt-in and off by default:</p>
 <ul>
   <li>Prometheus metrics at <code>/metrics</code> (<code>METRICS_ENABLED=true</code>, <code>METRICS_REQUIRE_AUTH=true</code> recommended).</li>
@@ -326,16 +326,16 @@ curl http://127.0.0.1:8000/health</code></pre>
 
 <h2 id="links">Useful links</h2>
 <ul>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.md">README</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.ko.md">Korean README</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
-  <li><a href="https://pypi.org/project/hwan-email-service/">PyPI: hwan-email-service</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service">GitHub: hwan96-ai/email-service</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/README.md">README</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/README.ko.md">Korean README</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
+  <li><a href="https://pypi.org/project/authmail-relay/">PyPI: authmail-relay</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay">GitHub: hwan96-ai/authmail-relay</a></li>
 </ul>
 
 <footer>

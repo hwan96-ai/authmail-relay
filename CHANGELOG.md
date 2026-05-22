@@ -4,14 +4,28 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Renamed (BREAKING for new installs of the legacy distribution)
+
+- **Project rename**: `email-service` / `hwan-email-service` / `email_service` → `authmail-relay` / `authmail-relay` / `authmail_relay`. The repository, the PyPI distribution, and the Python import package now all share the `authmail-relay` / `authmail_relay` naming. Tagline updated to *"Self-hosted SMTP relay for auth emails."*
+- **PyPI**: future releases publish to [`authmail-relay`](https://pypi.org/project/authmail-relay/). The pre-rename `hwan-email-service` project remains on PyPI for historical installs but will not receive new releases; the `release.yml` Trusted Publisher mapping must be re-created against the new project.
+- **Imports**: prefer `import authmail_relay` and `from authmail_relay import ...`. The `python -m email_service` entrypoint is now `python -m authmail_relay`.
+- **Compatibility shim**: a thin `email_service` package is included that re-exports `authmail_relay` and emits a `DeprecationWarning` on import (see `tests/test_legacy_email_service_shim.py`). Existing code using `import email_service` / `from email_service.sender import ...` keeps working. The shim is intended for one transitional release cycle and will be removed in a future major version — update imports when convenient.
+- **Migration impact**: source code that depends on `email_service` continues to import successfully but will now emit a `DeprecationWarning`. `pip install hwan-email-service` still installs the old PyPI release; to upgrade, switch to `pip install authmail-relay` and (optionally) rewrite imports to `authmail_relay`. Repository / GitHub Pages / PyPI project mappings must be renamed by the maintainer post-merge — see the PR description for the manual checklist.
+
 ### Documentation
 
+- Renamed all install / import / module-execution snippets across README, README.ko, GitHub Pages HTML guides, and the docs/ tree to the new naming. Old names are retained only in explicit migration / history / backward-compatibility sections (notably `docs/runbooks/pypi-yank-hotfix.md`, this CHANGELOG, the compat shim, and the README migration note).
+- Updated repository, documentation, and issue URLs in `pyproject.toml` and `SECURITY.md` to point at `https://github.com/hwan96-ai/authmail-relay` and `https://hwan96-ai.github.io/authmail-relay/`.
 - Added Korean README (`README.ko.md`) and bilingual usage guides served via GitHub Pages (English + 한국어).
-- Added `docs/supabase-auth.md` integration boundary notes — Supabase Auth owns users, OTPs, tokens, sessions, JWTs, and `auth.uid()` RLS; email-service only delivers email. Added `docs/providers.md` provider index.
+- Added `docs/supabase-auth.md` integration boundary notes — Supabase Auth owns users, OTPs, tokens, sessions, JWTs, and `auth.uid()` RLS; authmail-relay only delivers email. Added `docs/providers.md` provider index.
 - Tightened token-safety guidance (do not log raw tokens, `token_hash`, or full `confirmation_url`s in production) and polished onboarding / copy-paste examples across README and usage guides.
-- Fixed stale PyPI distribution name (`email-service` → `hwan-email-service`) in `docs/runbooks/pypi-yank-hotfix.md` so yank/reinstall commands and PyPI URLs match the published package.
+- Fixed stale PyPI distribution name (`email-service` → `hwan-email-service`) in `docs/runbooks/pypi-yank-hotfix.md` so yank/reinstall commands and PyPI URLs match the published package. (This entry now describes the legacy distribution; the runbook itself targets `authmail-relay` going forward.)
 - Refined Supabase Auth conceptual adapter and sample payloads to use generic `POST /send` with Supabase-issued `confirmation_url` embedded in `html_body`, and clarified that `/send/magic-link` is for bare opaque tokens combined with `MAGIC_LINK_BASE_URL`.
 - Added a Reference section to the GitHub Pages landing page linking API, configuration, deployment, webhooks, operations, Supabase Auth notes, and provider notes.
+
+### CI / Release pipeline
+
+- `release.yml`: smoke import step now imports `authmail_relay` instead of `email_service`; PyPI environment URL points at `https://pypi.org/p/authmail-relay`; Trusted Publisher setup notes call out the required new PyPI project mapping.
 
 ## [0.4.2] - 2026-05-22
 

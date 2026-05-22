@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service import api as api_module
-from email_service.api import create_app
-from email_service.notifiers import MagicLinkNotifier, OTPNotifier
-from email_service.sender import SendResult
+from authmail_relay import api as api_module
+from authmail_relay.api import create_app
+from authmail_relay.notifiers import MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SendResult
 
 
 def _ok(message_id: str = "<test@host>") -> SendResult:
@@ -41,16 +41,16 @@ def _auth():
 
 class TestOpenAPIMetadata:
     def test_every_path_has_summary_and_tags(self):
-        # OpenAPI version is now sourced from email_service.__version__
+        # OpenAPI version is now sourced from authmail_relay.__version__
         # (which itself reads pyproject via importlib.metadata). Avoid
         # hardcoding — assert it tracks the package.
-        import email_service
+        import authmail_relay
         client = TestClient(_app())
         spec = client.get("/openapi.json").json()
-        assert spec["info"]["version"] == email_service.__version__
+        assert spec["info"]["version"] == authmail_relay.__version__
         assert spec["info"]["version"]  # non-empty
         assert "description" in spec["info"]
-        assert spec["info"].get("contact", {}).get("name") == "email-service"
+        assert spec["info"].get("contact", {}).get("name") == "authmail-relay"
 
         for path, methods in spec["paths"].items():
             for method, op in methods.items():

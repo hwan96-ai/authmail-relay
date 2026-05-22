@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a defect in email-service
+about: Report a defect in authmail-relay
 title: "[Bug] "
 labels: bug
 assignees: ''
@@ -8,7 +8,7 @@ assignees: ''
 
 ## Environment
 
-- email-service version: <!-- e.g. 0.2.0 -->
+- authmail-relay version: <!-- e.g. 0.2.0 -->
 - Python version: <!-- e.g. 3.11.5 -->
 - OS: <!-- e.g. macOS 14, Ubuntu 22.04, Windows 11 -->
 - Install mode: <!-- library / HTTP service / Docker -->

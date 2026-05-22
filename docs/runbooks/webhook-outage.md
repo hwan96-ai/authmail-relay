@@ -22,9 +22,9 @@
 2. **webhook URL 검증 자체 차단 가능성 확인**:
    ```
    # 로그에서 다음 패턴 검색
-   grep "Webhook URL rejected" /var/log/email-service.log
+   grep "Webhook URL rejected" /var/log/authmail-relay.log
    # 또는
-   grep "DNS rebinding" /var/log/email-service.log
+   grep "DNS rebinding" /var/log/authmail-relay.log
    ```
    "rejected" 가 보이면 → caller 의 endpoint 가 private/loopback 으로 resolve. 정상 차단.
 
@@ -37,7 +37,7 @@
 1. **메트릭 + 로그에서 message_id 식별**:
    ```
    # 영구 실패한 webhook 의 message_id 검색
-   grep "Webhook delivery failed" /var/log/email-service.log | jq .message_id
+   grep "Webhook delivery failed" /var/log/authmail-relay.log | jq .message_id
    ```
 
 2. **운영자가 caller 에게 message_id 목록 수동 통보** (Slack / 이메일).

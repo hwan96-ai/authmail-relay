@@ -1,16 +1,16 @@
-# email-service
+# authmail-relay
 
-[![PyPI](https://img.shields.io/pypi/v/hwan-email-service.svg)](https://pypi.org/project/hwan-email-service/)
+[![PyPI](https://img.shields.io/pypi/v/authmail-relay.svg)](https://pypi.org/project/authmail-relay/)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> Small self-hosted auth-email service for Python/FastAPI teams using their own SMTP.
+> Self-hosted SMTP relay for auth emails.
 
-[한국어 README](README.ko.md) · [HTML Usage Guide](https://hwan96-ai.github.io/email-service/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/email-service/usage.ko.html)
+[한국어 README](README.ko.md) · [HTML Usage Guide](https://hwan96-ai.github.io/authmail-relay/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/authmail-relay/usage.ko.html)
 
 <sub>HTML guides render through GitHub Pages.</sub>
 
-`email-service` is a small, self-hosted service that sends **magic-link**, **OTP**,
+`authmail-relay` is a small, self-hosted service that sends **magic-link**, **OTP**,
 and **password-reset** emails through your own SMTP account. It keeps SMTP
 credentials and email-template logic out of every app that needs to send auth
 mail — your apps call one internal HTTP endpoint with a Bearer API key, or
@@ -20,7 +20,7 @@ import it as a Python library.
 App / Auth server
       │  Bearer API key
       ▼
-  email-service     ← SMTP credentials live here
+  authmail-relay    ← SMTP credentials live here
       │
       ▼
  SMTP provider  ──►  User inbox
@@ -49,21 +49,31 @@ App / Auth server
 
 ## Package names
 
-The repo name, PyPI distribution name, and Python import package differ.
+The repo, the PyPI distribution, and the Python import package now share the
+same project name.
 
 | | Name |
 |---|---|
-| Repository / service | `email-service` |
-| PyPI distribution | `hwan-email-service` |
-| Python import | `email_service` |
+| Repository / service | `authmail-relay` |
+| PyPI distribution | `authmail-relay` |
+| Python import | `authmail_relay` |
 
 ```bash
-pip install hwan-email-service
+pip install authmail-relay
 ```
 
 ```python
-import email_service
+import authmail_relay
 ```
+
+> **Migration note.** This project was previously published on PyPI as
+> `hwan-email-service` with the import package `email_service`, under the
+> repo name `email-service`. A thin `email_service` compatibility shim is
+> shipped in this release so existing `import email_service` / `from
+> email_service import …` code keeps working and emits a `DeprecationWarning`.
+> The shim will be removed in a future major release — update imports to
+> `authmail_relay` when convenient. See [CHANGELOG.md](CHANGELOG.md) for the
+> rename entry.
 
 ---
 
@@ -71,10 +81,10 @@ import email_service
 
 ```bash
 # Library mode (no extra deps)
-pip install hwan-email-service
+pip install authmail-relay
 
 # HTTP service mode (FastAPI + uvicorn)
-pip install "hwan-email-service[http]"
+pip install "authmail-relay[http]"
 ```
 
 Requirements: **Python 3.10+**.
@@ -82,25 +92,25 @@ Requirements: **Python 3.10+**.
 Install the latest unreleased commit straight from git:
 
 ```bash
-pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
+pip install "authmail-relay[http] @ git+https://github.com/hwan96-ai/authmail-relay.git"
 ```
 
 ---
 
 ## Quickstart — HTTP service mode
 
-Run `email-service` as a standalone service. Other apps call it over HTTP with
+Run `authmail-relay` as a standalone service. Other apps call it over HTTP with
 a Bearer API key. SMTP credentials live in this service's environment only.
 
 ```bash
-pip install "hwan-email-service[http]"
+pip install "authmail-relay[http]"
 
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 export API_KEY=$(openssl rand -hex 32)
 
-python -m email_service
+python -m authmail_relay
 # → Uvicorn running on http://127.0.0.1:8000
 ```
 
@@ -131,7 +141,7 @@ export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 
-python -m email_service test --to me@example.com
+python -m authmail_relay test --to me@example.com
 #   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
 ```
 
@@ -141,12 +151,12 @@ Exits `0` on success, `1` on failure with `error_code` printed.
 
 ## Quickstart — library mode
 
-Import `email_service` directly inside one Python/FastAPI app. Useful when you
+Import `authmail_relay` directly inside one Python/FastAPI app. Useful when you
 don't need a separate internal HTTP gateway.
 
 ```python
-from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender, MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com",
@@ -179,7 +189,7 @@ For the HTTP client SDK (`EmailServiceClient`), see [docs/api.md#library-mode](d
 
 ## Security — read before deploying
 
-`email-service` is designed as an **internal** service. A self-hosted auth
+`authmail-relay` is designed as an **internal** service. A self-hosted auth
 email service can be abused if exposed incorrectly. Treat the following as
 hard requirements before any production deploy:
 
@@ -200,8 +210,8 @@ store, verify, or expire login tokens. The caller is responsible for token
 entropy (at least `secrets.token_urlsafe(32)`), expiration, single-use
 enforcement, replay protection, and account-state checks.
 
-If you front email-service with Supabase Auth or another auth provider, the
-provider — not email-service — generates and verifies the token. See
+If you front authmail-relay with Supabase Auth or another auth provider, the
+provider — not authmail-relay — generates and verifies the token. See
 [docs/supabase-auth.md](docs/supabase-auth.md).
 
 For the full production checklist, see [docs/deployment.md](docs/deployment.md).
@@ -266,7 +276,7 @@ Opt-in features, all off by default:
   `METRICS_REQUIRE_AUTH=true` recommended).
 - **Structured JSON logs** (`EMAIL_SERVICE_LOG_FORMAT=json`). Recipient
   addresses are hashed (SHA-256, first 8 chars) — never logged in plaintext.
-- **`X-Request-ID` propagation** end-to-end from gateway → email-service →
+- **`X-Request-ID` propagation** end-to-end from gateway → authmail-relay →
   SMTP send logs.
 - **SMTP retries** with bounded exponential backoff (library mode,
   `max_retries=N`).
@@ -294,13 +304,13 @@ End-to-end integration snippets for common Python frameworks:
 | Managed deliverability, bounces, SLA, dashboards | Resend / Postmark / SendGrid / Mailgun / Amazon SES |
 | Full user/session/RBAC/password flows | Supabase Auth, Ory Kratos, Keycloak, Authentik, Appwrite |
 | A mail library inside one FastAPI app | [fastapi-mail](https://github.com/sabuhish/fastapi-mail) |
-| An internal HTTP gateway that keeps your existing SMTP credentials out of every app | **email-service** |
+| An internal HTTP gateway that keeps your existing SMTP credentials out of every app | **authmail-relay** |
 
 A longer comparison, including self-hosted email platforms, lives in
 [docs/alternatives.md](docs/alternatives.md).
 
-Using email-service alongside Supabase Auth? See
-[Supabase Auth integration notes](docs/supabase-auth.md) — email-service
+Using authmail-relay alongside Supabase Auth? See
+[Supabase Auth integration notes](docs/supabase-auth.md) — authmail-relay
 delivers the email, Supabase Auth still owns tokens, sessions, and
 `auth.uid()` identity. Per-provider notes index:
 [docs/providers.md](docs/providers.md).
@@ -310,8 +320,8 @@ delivers the email, Supabase Auth still owns tokens, sessions, and
 ## Development
 
 ```bash
-git clone https://github.com/hwan96-ai/email-service.git
-cd email-service
+git clone https://github.com/hwan96-ai/authmail-relay.git
+cd authmail-relay
 
 pip install -e ".[dev,http]"
 python -m pytest tests/ -v

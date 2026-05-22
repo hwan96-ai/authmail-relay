@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
-COPY email_service ./email_service
+COPY authmail_relay ./authmail_relay
 
 RUN pip install ".[http]"
 
@@ -20,4 +20,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["python", "-m", "email_service"]
+CMD ["python", "-m", "authmail_relay"]

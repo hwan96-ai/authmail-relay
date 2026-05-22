@@ -12,7 +12,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.sender import (
+from authmail_relay.sender import (
     SmtpConfig,
     SmtpSender,
     ERR_SMTP_CONNECTION,
@@ -23,8 +23,8 @@ from email_service.sender import (
     STATUS_FAILED,
     STATUS_PARTIAL,
 )
-from email_service import webhooks as webhooks_module
-from email_service.webhooks import deliver_webhook, SIGNATURE_HEADER, _sign
+from authmail_relay import webhooks as webhooks_module
+from authmail_relay.webhooks import deliver_webhook, SIGNATURE_HEADER, _sign
 
 
 def _mock_server(mock_smtp_cls):
@@ -46,7 +46,7 @@ def test_capture_writes_eml_and_skips_smtp(tmp_path, monkeypatch):
         host="smtp.test.com", port=587,
         user="t@t.com", password="pw",
     ))
-    with patch("email_service.sender.smtplib.SMTP") as mock_smtp:
+    with patch("authmail_relay.sender.smtplib.SMTP") as mock_smtp:
         result = sender.send("to@t.com", "subj", "<p>hi</p>")
         # SMTP should not have been touched.
         assert not mock_smtp.called
@@ -66,7 +66,7 @@ def test_capture_dir_unset_uses_smtp(tmp_path, monkeypatch):
         host="smtp.test.com", port=587,
         user="t@t.com", password="pw",
     ))
-    with patch("email_service.sender.smtplib.SMTP") as mock_smtp:
+    with patch("authmail_relay.sender.smtplib.SMTP") as mock_smtp:
         _mock_server(mock_smtp)
         result = sender.send("to@t.com", "subj", "<p>hi</p>")
     assert result.sent is True
@@ -104,8 +104,8 @@ def test_retry_succeeds_after_transient_timeout(monkeypatch):
             server.sendmail.return_value = {}
         return server
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep") as mock_sleep:
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep") as mock_sleep:
         result = sender.send("to@t.com", "s", "<p>x</p>")
     assert result.sent is True
     assert result.attempts == 2
@@ -130,8 +130,8 @@ def test_retry_exhausts_and_fails(monkeypatch):
         s.sendmail.side_effect = socket.timeout("slow")
         return s
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep"):
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep"):
         result = sender.send("to@t.com", "s", "<p>x</p>")
     assert result.sent is False
     assert result.attempts == 3  # 1 initial + 2 retries
@@ -161,8 +161,8 @@ def test_retry_on_4xx_smtp_response():
             s.sendmail.return_value = {}
         return s
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep"):
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep"):
         result = sender.send("to@t.com", "s", "<p>x</p>")
     assert result.sent is True
     assert result.attempts == 2
@@ -187,8 +187,8 @@ def test_no_retry_on_5xx_smtp_response():
         )
         return s
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep") as mock_sleep:
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep") as mock_sleep:
         result = sender.send("to@t.com", "s", "<p>x</p>")
     assert result.sent is False
     assert counter["n"] == 1  # No retry on 5xx
@@ -212,8 +212,8 @@ def test_no_retry_on_partial_refusal():
         s.sendmail.return_value = {"bad@t.com": (550, b"no such user")}
         return s
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep"):
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep"):
         result = sender.send(
             "to@t.com", "s", "<p>x</p>", bcc=["bad@t.com"]
         )
@@ -250,8 +250,8 @@ def test_message_id_stable_across_retries():
         s.sendmail.side_effect = capture_send
         return s
 
-    with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-         patch("email_service.sender.time.sleep"):
+    with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+         patch("authmail_relay.sender.time.sleep"):
         sender.send("to@t.com", "s", "<p>x</p>")
     assert len(seen_message_ids) == 2
     assert seen_message_ids[0] == seen_message_ids[1]
@@ -282,7 +282,7 @@ def test_deliver_webhook_retries_then_succeeds(monkeypatch):
 
     transport = httpx.MockTransport(handler)
     client = httpx.Client(transport=transport)
-    with patch("email_service.webhooks.time.sleep") as mock_sleep:
+    with patch("authmail_relay.webhooks.time.sleep") as mock_sleep:
         ok = deliver_webhook(
             "http://hook/x",
             {"message_id": "<m>"},
@@ -298,7 +298,7 @@ def test_deliver_webhook_exhausts_retries(monkeypatch):
     monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
     transport = httpx.MockTransport(lambda req: httpx.Response(500))
     client = httpx.Client(transport=transport)
-    with patch("email_service.webhooks.time.sleep"):
+    with patch("authmail_relay.webhooks.time.sleep"):
         ok = deliver_webhook(
             "http://hook/x",
             {"message_id": "<m>"},
@@ -341,8 +341,8 @@ def test_api_send_with_webhook_returns_accepted(monkeypatch):
     monkeypatch.setenv("API_KEY", "k")
     monkeypatch.setenv("SMTP_HOST", "smtp.t")
     from fastapi.testclient import TestClient
-    from email_service.api import create_app
-    from email_service.sender import SendResult as SR
+    from authmail_relay.api import create_app
+    from authmail_relay.sender import SendResult as SR
 
     fake_sender = MagicMock()
     fake_sender.send.return_value = SR(
@@ -357,7 +357,7 @@ def test_api_send_with_webhook_returns_accepted(monkeypatch):
         captured["secret"] = secret
         return True
 
-    monkeypatch.setattr("email_service.api.deliver_webhook", fake_deliver)
+    monkeypatch.setattr("authmail_relay.api.deliver_webhook", fake_deliver)
     # P0-2: SSRF validator runs at Pydantic parse time. Allow 'hook' to bypass
     # DNS resolution for this test fixture.
     monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")

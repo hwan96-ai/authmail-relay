@@ -1,10 +1,10 @@
-"""FastAPI integration example: call the email-service HTTP API.
+"""FastAPI integration example: call the authmail-relay HTTP API.
 
-Use the async client when calling email-service from a FastAPI endpoint so the
+Use the async client when calling authmail-relay from a FastAPI endpoint so the
 event loop is never blocked on SMTP.
 
 Run:
-    pip install fastapi uvicorn "hwan-email-service[http]"
+    pip install fastapi uvicorn "authmail-relay[http]"
     EMAIL_SERVICE_URL=http://localhost:8000 EMAIL_SERVICE_API_KEY=key \\
         uvicorn examples.fastapi_integration:app --reload
 """
@@ -20,8 +20,8 @@ except ImportError:  # pragma: no cover
         "FastAPI is not installed. Install with `pip install fastapi uvicorn`."
     )
 
-from email_service.async_client import AsyncEmailServiceClient
-from email_service.client import EmailServiceError
+from authmail_relay.async_client import AsyncEmailServiceClient
+from authmail_relay.client import EmailServiceError
 
 
 EMAIL_SERVICE_URL = os.environ.get("EMAIL_SERVICE_URL", "http://localhost:8000")

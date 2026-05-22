@@ -1,4 +1,4 @@
-"""HTTP API wrapping email_service for service-to-service email sending."""
+"""HTTP API wrapping authmail_relay for service-to-service email sending."""
 from __future__ import annotations
 
 import hashlib
@@ -26,12 +26,12 @@ from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
-from email_service import __version__
-from email_service import metrics as metrics_module
-from email_service.notifiers import MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig, SmtpSender
-from email_service.url_validation import validate_webhook_url
-from email_service.webhooks import deliver_webhook
+from authmail_relay import __version__
+from authmail_relay import metrics as metrics_module
+from authmail_relay.notifiers import MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SmtpConfig, SmtpSender
+from authmail_relay.url_validation import validate_webhook_url
+from authmail_relay.webhooks import deliver_webhook
 
 
 # P0-3 (body size limits): caps for external input fields. Goal is to prevent
@@ -435,7 +435,7 @@ def create_app(
         otp = OTPNotifier(sender)
 
     app = FastAPI(
-        title="email-service",
+        title="authmail-relay",
         version=__version__,
         description=(
             "SMTP-based HTML email service with magic-link and OTP notifiers. "
@@ -445,8 +445,8 @@ def create_app(
             "request body."
         ),
         contact={
-            "name": "email-service",
-            "url": "https://github.com/hwan96-ai/email-service",
+            "name": "authmail-relay",
+            "url": "https://github.com/hwan96-ai/authmail-relay",
         },
         openapi_tags=[
             {"name": "Email", "description": "Email send endpoints."},

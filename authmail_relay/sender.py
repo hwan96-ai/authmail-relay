@@ -12,8 +12,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
 
-from email_service.logging_config import hash_recipient
-from email_service.metrics import (
+from authmail_relay.logging_config import hash_recipient
+from authmail_relay.metrics import (
     email_retry_attempts_total,
     email_send_active,
     email_send_duration_seconds,

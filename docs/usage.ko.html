@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>email-service 사용 가이드</title>
+<title>authmail-relay 사용 가이드</title>
 <style>
   :root {
     --fg: #1a1a1a;
@@ -136,14 +136,14 @@
 <div class="wrap">
 <header class="top">
   <div class="lang"><a href="index.html">Home</a> · 언어: <a href="usage.html">English</a> · <strong>한국어</strong></div>
-  <h1>email-service 사용 가이드</h1>
-  <p class="lede">자체 SMTP를 통해 magic link, OTP, password reset 같은 인증 메일을 보내는 실용 가이드. <code>email-service</code>를 HTTP 게이트웨이로 또는 Python 라이브러리로 사용한다.</p>
+  <h1>authmail-relay 사용 가이드</h1>
+  <p class="lede">자체 SMTP를 통해 magic link, OTP, password reset 같은 인증 메일을 보내는 실용 가이드. <code>authmail-relay</code>를 HTTP 게이트웨이로 또는 Python 라이브러리로 사용한다.</p>
 </header>
 
 <nav class="toc">
   <strong>목차</strong>
   <ul>
-    <li><a href="#what">email-service가 하는 일</a></li>
+    <li><a href="#what">authmail-relay가 하는 일</a></li>
     <li><a href="#when">언제 쓰는가</a></li>
     <li><a href="#mode">모드 선택</a></li>
     <li><a href="#install">설치</a></li>
@@ -159,8 +159,8 @@
   </ul>
 </nav>
 
-<h2 id="what">email-service가 하는 일</h2>
-<p><code>email-service</code>는 사용자 본인의 SMTP 계정을 통해 트랜잭셔널 인증 메일을 발송하는 작은 self-hosted 서비스다. 인증 메일을 보내야 하는 모든 앱에서 SMTP 자격증명과 메일 템플릿 로직을 분리한다. 다른 앱들은 Bearer API key로 내부 HTTP 엔드포인트 하나만 호출하거나 Python 라이브러리로 import해서 사용한다.</p>
+<h2 id="what">authmail-relay가 하는 일</h2>
+<p><code>authmail-relay</code>는 사용자 본인의 SMTP 계정을 통해 트랜잭셔널 인증 메일을 발송하는 작은 self-hosted 서비스다. 인증 메일을 보내야 하는 모든 앱에서 SMTP 자격증명과 메일 템플릿 로직을 분리한다. 다른 앱들은 Bearer API key로 내부 HTTP 엔드포인트 하나만 호출하거나 Python 라이브러리로 import해서 사용한다.</p>
 <p>magic link, OTP 코드, password reset에 대한 기본 플로우와, 임의의 HTML/텍스트를 보낼 수 있는 <code>/send</code> 엔드포인트를 함께 제공한다.</p>
 
 <h2 id="when">언제 쓰는가</h2>
@@ -169,7 +169,7 @@
   <li>인증 메일을 보내야 하는 내부 앱이 여러 개 있고, 그 앱마다 SMTP 자격증명과 HTML 템플릿을 복사하고 싶지 않을 때.</li>
   <li>한 가지 일(인증 메일 발송)만 하는 작은 서비스를 원하고, 인증/세션/토큰 로직과는 분리하고 싶을 때.</li>
 </ul>
-<div class="callout">관리형 도달률, 반송 처리, suppression list, 도메인 평판이 필요하다면 관리형 provider(Resend, Postmark, SendGrid, Mailgun, Amazon SES)를 사용한다. <code>email-service</code>는 그 대체품이 아니다.</div>
+<div class="callout">관리형 도달률, 반송 처리, suppression list, 도메인 평판이 필요하다면 관리형 provider(Resend, Postmark, SendGrid, Mailgun, Amazon SES)를 사용한다. <code>authmail-relay</code>는 그 대체품이 아니다.</div>
 
 <h2 id="mode">모드 선택</h2>
 <table>
@@ -183,34 +183,34 @@
 
 <h2 id="install">설치</h2>
 <pre><code># Library mode (추가 의존성 없음)
-pip install hwan-email-service
+pip install authmail-relay
 
 # HTTP service mode (FastAPI + uvicorn)
-pip install "hwan-email-service[http]"</code></pre>
+pip install "authmail-relay[http]"</code></pre>
 <p>요구 사항: Python 3.10+.</p>
 <p>아직 릴리즈되지 않은 최신 commit을 git에서 바로 설치:</p>
-<pre><code>pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"</code></pre>
+<pre><code>pip install "authmail-relay[http] @ git+https://github.com/hwan96-ai/authmail-relay.git"</code></pre>
 
 <h2 id="naming">패키지 이름 규칙</h2>
 <p>저장소 이름, PyPI 배포 이름, Python import 이름이 서로 다르다. 각각 올바른 위치에 사용해야 한다.</p>
 <table>
   <thead><tr><th>맥락</th><th>이름</th></tr></thead>
   <tbody>
-    <tr><td>저장소 / 서비스</td><td><code>email-service</code></td></tr>
-    <tr><td>PyPI 배포 (<code>pip install</code>에 사용)</td><td><code>hwan-email-service</code></td></tr>
-    <tr><td>Python import</td><td><code>email_service</code></td></tr>
+    <tr><td>저장소 / 서비스</td><td><code>authmail-relay</code></td></tr>
+    <tr><td>PyPI 배포 (<code>pip install</code>에 사용)</td><td><code>authmail-relay</code></td></tr>
+    <tr><td>Python import</td><td><code>authmail_relay</code></td></tr>
   </tbody>
 </table>
 
 <h2 id="http">HTTP 서비스 실행</h2>
-<pre><code>pip install "hwan-email-service[http]"
+<pre><code>pip install "authmail-relay[http]"
 
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 export API_KEY=$(openssl rand -hex 32)
 
-python -m email_service
+python -m authmail_relay
 # → Uvicorn running on http://127.0.0.1:8000</code></pre>
 <p>OpenAPI 문서는 <code>http://127.0.0.1:8000/docs</code>에서 제공된다. 필수 환경변수는 <code>SMTP_HOST</code>와 <code>API_KEY</code>이며, 빠지면 서비스는 시작 시점에 즉시 실패한다.</p>
 
@@ -219,7 +219,7 @@ python -m email_service
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 
-python -m email_service test --to me@example.com</code></pre>
+python -m authmail_relay test --to me@example.com</code></pre>
 <p>성공 시 <code>0</code>, 실패 시 <code>error_code</code>와 함께 <code>1</code>로 종료한다.</p>
 
 <h2 id="endpoints">curl로 엔드포인트 호출</h2>
@@ -254,12 +254,12 @@ python -m email_service test --to me@example.com</code></pre>
     "token": "$TOKEN",
     "base_url": "https://myapp.com"
   }'</code></pre>
-<p>토큰의 생성, 저장, 만료, 일회성 보장은 호출자의 책임이다. <code>email-service</code>는 메일을 보낼 뿐이다. <code>$TOKEN</code>은 호출자 앱에서 생성한다 — 예: <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — 또는 인증 제공자가 발급한 토큰을 그대로 전달한다.</p>
+<p>토큰의 생성, 저장, 만료, 일회성 보장은 호출자의 책임이다. <code>authmail-relay</code>는 메일을 보낼 뿐이다. <code>$TOKEN</code>은 호출자 앱에서 생성한다 — 예: <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — 또는 인증 제공자가 발급한 토큰을 그대로 전달한다.</p>
 <div class="warn"><strong>두 번째 터미널 함정.</strong> <code>$API_KEY</code>는 export한 셸 안에만 존재한다. 다른 터미널에서 <code>curl</code>을 실행한다면 그 터미널에서 <code>API_KEY</code>를 다시 export하거나 <code>.env</code>에서 불러와야 한다.</div>
 
 <h2 id="library">라이브러리 사용 예시</h2>
-<pre><code>from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig
+<pre><code>from authmail_relay import SmtpSender, MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com",
@@ -301,12 +301,12 @@ curl http://127.0.0.1:8000/health</code></pre>
   <li><strong>인증 실패 요청에 대한 rate limit을 엣지에서 적용한다.</strong> 내장 per-bearer rate limit은 인증된 요청에만 적용된다.</li>
   <li><strong><code>/docs</code>와 <code>/metrics</code>를 보호</strong> — 엣지에서 비활성화하거나 인증을 요구한다. <code>METRICS_REQUIRE_AUTH=true</code>를 설정한다.</li>
   <li><strong>시크릿을 소스 밖에 보관.</strong> <code>API_KEY</code>, <code>WEBHOOK_SECRET</code>, SMTP 자격증명은 환경변수 또는 시크릿 매니저에 둔다. <code>API_KEY</code>는 <code>openssl rand -hex 32</code>로 생성한다.</li>
-  <li><strong>Trust boundary.</strong> <code>email-service</code>는 인증 메일을 발송할 뿐, 로그인 토큰을 생성·저장·검증·만료시키지 않는다. 토큰 엔트로피(<code>secrets.token_urlsafe(32)</code> 이상), 만료, 일회성 보장, replay 방지, 계정 상태 검사는 호출자의 책임이다.</li>
+  <li><strong>Trust boundary.</strong> <code>authmail-relay</code>는 인증 메일을 발송할 뿐, 로그인 토큰을 생성·저장·검증·만료시키지 않는다. 토큰 엔트로피(<code>secrets.token_urlsafe(32)</code> 이상), 만료, 일회성 보장, replay 방지, 계정 상태 검사는 호출자의 책임이다.</li>
   <li><strong>프로덕션에서 raw token, OTP 코드, <code>token_hash</code> 값, 전체 <code>confirmation_url</code> 값, <code>action_link</code> 값을 로그에 남기지 말 것.</strong> 이들은 bearer secret이다. 비프로덕션 디버깅에는 <code>dry-run</code> 또는 <code>.eml</code> capture 모드를 사용한다.</li>
 </ul>
 
 <h2 id="ops">Webhook과 관측성</h2>
-<p><code>/send*</code> 요청 본문에 <code>webhook_url</code>을 전달하면 발송 결과를 비동기로 받는다. 서비스는 legacy V1 헤더와 timestamp-bound V2 헤더 양쪽으로 payload에 서명한다. 새 수신자는 V2를 검증해야 한다. <a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">webhooks.md</a> 참고.</p>
+<p><code>/send*</code> 요청 본문에 <code>webhook_url</code>을 전달하면 발송 결과를 비동기로 받는다. 서비스는 legacy V1 헤더와 timestamp-bound V2 헤더 양쪽으로 payload에 서명한다. 새 수신자는 V2를 검증해야 한다. <a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/webhooks.md">webhooks.md</a> 참고.</p>
 <p>관측성 기능은 모두 기본 off, opt-in:</p>
 <ul>
   <li>Prometheus metrics <code>/metrics</code> (<code>METRICS_ENABLED=true</code>, <code>METRICS_REQUIRE_AUTH=true</code> 권장).</li>
@@ -326,16 +326,16 @@ curl http://127.0.0.1:8000/health</code></pre>
 
 <h2 id="links">관련 링크</h2>
 <ul>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.md">README</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.ko.md">한국어 README</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
-  <li><a href="https://pypi.org/project/hwan-email-service/">PyPI: hwan-email-service</a></li>
-  <li><a href="https://github.com/hwan96-ai/email-service">GitHub: hwan96-ai/email-service</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/README.md">README</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/README.ko.md">한국어 README</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
+  <li><a href="https://pypi.org/project/authmail-relay/">PyPI: authmail-relay</a></li>
+  <li><a href="https://github.com/hwan96-ai/authmail-relay">GitHub: hwan96-ai/authmail-relay</a></li>
 </ul>
 
 <footer>

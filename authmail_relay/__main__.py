@@ -1,4 +1,4 @@
-"""CLI entrypoint: `python -m email_service [serve|test]`.
+"""CLI entrypoint: `python -m authmail_relay [serve|test]`.
 
 Two subcommands:
 
@@ -20,8 +20,8 @@ def _cmd_serve(_args: argparse.Namespace) -> int:
     # Import lazily so `test` does not require uvicorn/fastapi installed.
     import uvicorn
 
-    from email_service.api import create_app
-    from email_service.logging_config import configure_logging
+    from authmail_relay.api import create_app
+    from authmail_relay.logging_config import configure_logging
 
     configure_logging()
     app = create_app()
@@ -34,7 +34,7 @@ def _cmd_serve(_args: argparse.Namespace) -> int:
 
 
 def _cmd_test(args: argparse.Namespace) -> int:
-    from email_service.api import _build_sender_from_env
+    from authmail_relay.api import _build_sender_from_env
 
     sender = _build_sender_from_env()
     result = sender.send(args.to, args.subject, args.html)
@@ -44,9 +44,9 @@ def _cmd_test(args: argparse.Namespace) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m email_service",
+        prog="python -m authmail_relay",
         description=(
-            "Run the email-service HTTP API (`serve`, default) or fire a "
+            "Run the authmail-relay HTTP API (`serve`, default) or fire a "
             "one-shot test email from environment variables (`test`)."
         ),
     )
@@ -67,12 +67,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     test.add_argument(
         "--subject",
-        default="email-service test",
-        help="Subject line (default: 'email-service test').",
+        default="authmail-relay test",
+        help="Subject line (default: 'authmail-relay test').",
     )
     test.add_argument(
         "--html",
-        default="<p>Hello from <code>email-service</code>.</p>",
+        default="<p>Hello from <code>authmail-relay</code>.</p>",
         help="HTML body (default: a short hello world).",
     )
 

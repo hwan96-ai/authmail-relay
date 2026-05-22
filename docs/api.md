@@ -83,7 +83,7 @@ The Python client SDK exposes this as `dry_run=True`.
 
 Every request echoes `X-Request-ID`. If the client omits it, the server
 assigns a UUID. The ID propagates into the SMTP send log, so gateway →
-email-service → SMTP can be grepped on a single ID.
+authmail-relay → SMTP can be grepped on a single ID.
 
 ```bash
 curl -H "Authorization: Bearer $API_KEY" \
@@ -100,10 +100,10 @@ Bearer auth, dry-run, and 4xx/5xx exceptions.
 
 ```python
 import os
-from email_service.client import EmailServiceClient
+from authmail_relay.client import EmailServiceClient
 
 with EmailServiceClient(
-    "http://email-service:8000",
+    "http://authmail-relay:8000",
     os.environ["EMAIL_SERVICE_API_KEY"],
 ) as client:
     client.health()
@@ -146,7 +146,7 @@ resp.raise_for_status()
 ### Node.js (fetch)
 
 ```javascript
-const resp = await fetch("http://email-service:8000/send/otp", {
+const resp = await fetch("http://authmail-relay:8000/send/otp", {
   method: "POST",
   headers: {
     "Authorization": `Bearer ${process.env.EMAIL_API_KEY}`,
@@ -159,7 +159,7 @@ const resp = await fetch("http://email-service:8000/send/otp", {
   }),
 });
 
-if (!resp.ok) throw new Error(`email-service failed: ${resp.status}`);
+if (!resp.ok) throw new Error(`authmail-relay failed: ${resp.status}`);
 console.log(await resp.json());
 ```
 
@@ -170,20 +170,20 @@ console.log(await resp.json());
 Public API surface:
 
 ```python
-from email_service import (
+from authmail_relay import (
     SmtpSender,
     MagicLinkNotifier,
     OTPNotifier,
     TemplateNotifier,
 )
-from email_service.sender import SmtpConfig
-from email_service.notifiers import Notifier   # base class for custom notifiers
+from authmail_relay.sender import SmtpConfig
+from authmail_relay.notifiers import Notifier   # base class for custom notifiers
 ```
 
 ### `SmtpConfig`
 
 ```python
-from email_service.sender import SmtpConfig
+from authmail_relay.sender import SmtpConfig
 
 config = SmtpConfig(
     host="smtp.gmail.com",
@@ -201,8 +201,8 @@ config = SmtpConfig(
 Low-level HTML/multipart sender.
 
 ```python
-from email_service import SmtpSender
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com",
@@ -225,8 +225,8 @@ ok = sender.send(
 ### `MagicLinkNotifier`
 
 ```python
-from email_service import SmtpSender, MagicLinkNotifier
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender, MagicLinkNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
@@ -254,8 +254,8 @@ enforcement.
 ### `OTPNotifier`
 
 ```python
-from email_service import SmtpSender, OTPNotifier
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender, OTPNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com", user="noreply@mycompany.com", password="app-password",
@@ -271,8 +271,8 @@ OTPNotifier(sender, subject_prefix="[MyApp] ", expire_minutes=5).send(
 For arbitrary subject + HTML templates that don't fit `(user_name, payload)`.
 
 ```python
-from email_service import SmtpSender, TemplateNotifier
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender, TemplateNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(host="smtp.gmail.com", user="noreply@x.com", password="..."))
 
@@ -297,8 +297,8 @@ land in the HTML body only (subject and text body are not HTML contexts).
 
 ```python
 from html import escape
-from email_service.notifiers import Notifier
-from email_service.sender import SmtpSender
+from authmail_relay.notifiers import Notifier
+from authmail_relay.sender import SmtpSender
 
 class WelcomeNotifier(Notifier):
     def __init__(self, sender: SmtpSender, *, company_name: str = ""):
