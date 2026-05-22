@@ -114,6 +114,9 @@ curl -X POST http://127.0.0.1:8000/send \
 # → {"sent":true}
 ```
 
+> `$API_KEY` only exists in the shell where it was exported. If `curl` runs in
+> a second terminal, re-export `API_KEY` there or load it from `.env` first.
+
 OpenAPI docs: <http://127.0.0.1:8000/docs>.
 
 Full HTTP endpoint reference, dry-run mode, idempotency, and the Python client
@@ -156,7 +159,7 @@ sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
 # Magic link
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "abc123token",
+    "user@example.com", "User Name", "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
 )
 
 # OTP
@@ -165,6 +168,8 @@ OTPNotifier(sender).send("user@example.com", "User Name", "482901")
 
 Full library API (`SmtpSender`, `MagicLinkNotifier`, `OTPNotifier`,
 `TemplateNotifier`, custom notifiers, retries): [docs/api.md](docs/api.md#library-mode).
+
+For the HTTP client SDK (`EmailServiceClient`), see [docs/api.md#library-mode](docs/api.md#library-mode).
 
 ---
 
@@ -190,6 +195,10 @@ hard requirements before any production deploy:
 store, verify, or expire login tokens. The caller is responsible for token
 entropy (at least `secrets.token_urlsafe(32)`), expiration, single-use
 enforcement, replay protection, and account-state checks.
+
+If you front email-service with Supabase Auth or another auth provider, the
+provider — not email-service — generates and verifies the token. See
+[docs/supabase-auth.md](docs/supabase-auth.md).
 
 For the full production checklist, see [docs/deployment.md](docs/deployment.md).
 Vulnerability reporting: [SECURITY.md](SECURITY.md).

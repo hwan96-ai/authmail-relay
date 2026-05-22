@@ -251,10 +251,11 @@ python -m email_service test --to me@example.com</code></pre>
   -d '{
     "to": "user@example.com",
     "user_name": "User Name",
-    "token": "abc123token",
+    "token": "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
     "base_url": "https://myapp.com"
   }'</code></pre>
 <p>토큰의 생성, 저장, 만료, 일회성 보장은 호출자의 책임이다. <code>email-service</code>는 메일을 보낼 뿐이다.</p>
+<div class="warn"><strong>두 번째 터미널 함정.</strong> <code>$API_KEY</code>는 export한 셸 안에만 존재한다. 다른 터미널에서 <code>curl</code>을 실행한다면 그 터미널에서 <code>API_KEY</code>를 다시 export하거나 <code>.env</code>에서 불러와야 한다.</div>
 
 <h2 id="library">라이브러리 사용 예시</h2>
 <pre><code>from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
@@ -271,7 +272,7 @@ sender.send("user@example.com", "Hi", "&lt;p&gt;Hello&lt;/p&gt;")
 
 # Magic link
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "abc123token",
+    "user@example.com", "User Name", "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
 )
 
 # OTP
@@ -297,10 +298,11 @@ curl http://127.0.0.1:8000/health</code></pre>
   <li><strong><code>/docs</code>와 <code>/metrics</code>를 보호</strong> — 엣지에서 비활성화하거나 인증을 요구한다. <code>METRICS_REQUIRE_AUTH=true</code>를 설정한다.</li>
   <li><strong>시크릿을 소스 밖에 보관.</strong> <code>API_KEY</code>, <code>WEBHOOK_SECRET</code>, SMTP 자격증명은 환경변수 또는 시크릿 매니저에 둔다. <code>API_KEY</code>는 <code>openssl rand -hex 32</code>로 생성한다.</li>
   <li><strong>Trust boundary.</strong> <code>email-service</code>는 인증 메일을 발송할 뿐, 로그인 토큰을 생성·저장·검증·만료시키지 않는다. 토큰 엔트로피(<code>secrets.token_urlsafe(32)</code> 이상), 만료, 일회성 보장, replay 방지, 계정 상태 검사는 호출자의 책임이다.</li>
+  <li><strong>프로덕션에서 raw token, OTP 코드, <code>token_hash</code> 값, 전체 <code>confirmation_url</code> 값, <code>action_link</code> 값을 로그에 남기지 말 것.</strong> 이들은 bearer secret이다. 비프로덕션 디버깅에는 <code>dry-run</code> 또는 <code>.eml</code> capture 모드를 사용한다.</li>
 </ul>
 
 <h2 id="ops">Webhook과 관측성</h2>
-<p><code>/send*</code> 요청 본문에 <code>webhook_url</code>을 전달하면 발송 결과를 비동기로 받는다. 서비스는 legacy V1 헤더와 timestamp-bound V2 헤더 양쪽으로 payload에 서명한다. 새 수신자는 V2를 검증해야 한다. <a href="webhooks.md">webhooks.md</a> 참고.</p>
+<p><code>/send*</code> 요청 본문에 <code>webhook_url</code>을 전달하면 발송 결과를 비동기로 받는다. 서비스는 legacy V1 헤더와 timestamp-bound V2 헤더 양쪽으로 payload에 서명한다. 새 수신자는 V2를 검증해야 한다. <a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">webhooks.md</a> 참고.</p>
 <p>관측성 기능은 모두 기본 off, opt-in:</p>
 <ul>
   <li>Prometheus metrics <code>/metrics</code> (<code>METRICS_ENABLED=true</code>, <code>METRICS_REQUIRE_AUTH=true</code> 권장).</li>
@@ -312,21 +314,22 @@ curl http://127.0.0.1:8000/health</code></pre>
 <h2 id="notes">이 서비스가 아닌 것</h2>
 <ul>
   <li>메일 서버가 아니다. 기존 SMTP provider와 통신할 뿐, 인바운드 메일을 받거나 MX를 처리하지 않는다.</li>
-  <li>풀-스택 인증 플랫폼이 아니다. 사용자, 세션, 토큰을 저장하지 않는다.</li>
+  <li>풀-스택 인증 플랫폼이 아니다. 로그인 토큰의 생성, 저장, 검증, 만료, 세션 관리, 사용자 저장을 하지 않음.</li>
+  <li>Supabase Auth, Auth0, Clerk, Keycloak 등 어떤 인증 플랫폼도 아니다. 다른 시스템이 보내기로 결정한 이메일을 전달할 뿐이다.</li>
   <li>마케팅/대량 메일 플랫폼이 아니다. 반송 처리, suppression list, 도달률 도구가 없다.</li>
   <li>Resend, Postmark, SendGrid, Mailgun, SES 같은 관리형 메일 서비스의 대체품이 아니다. 그들이 제공하는 도달률·평판·SLA를 작은 self-hosted 게이트웨이가 맞출 수 없다.</li>
 </ul>
 
 <h2 id="links">관련 링크</h2>
 <ul>
-  <li><a href="../README.md">README</a></li>
-  <li><a href="../README.ko.md">한국어 README</a></li>
-  <li><a href="api.md">API reference (docs/api.md)</a></li>
-  <li><a href="configuration.md">Configuration (docs/configuration.md)</a></li>
-  <li><a href="deployment.md">Deployment hardening (docs/deployment.md)</a></li>
-  <li><a href="webhooks.md">Webhooks (docs/webhooks.md)</a></li>
-  <li><a href="operations.md">Operations (docs/operations.md)</a></li>
-  <li><a href="alternatives.md">Alternatives (docs/alternatives.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.md">README</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.ko.md">한국어 README</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
   <li><a href="https://pypi.org/project/hwan-email-service/">PyPI: hwan-email-service</a></li>
   <li><a href="https://github.com/hwan96-ai/email-service">GitHub: hwan96-ai/email-service</a></li>
 </ul>

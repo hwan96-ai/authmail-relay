@@ -251,10 +251,11 @@ python -m email_service test --to me@example.com</code></pre>
   -d '{
     "to": "user@example.com",
     "user_name": "User Name",
-    "token": "abc123token",
+    "token": "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
     "base_url": "https://myapp.com"
   }'</code></pre>
 <p>The caller is responsible for generating, storing, expiring, and single-use enforcing the token. <code>email-service</code> only sends the mail.</p>
+<div class="warn"><strong>Second-terminal trap.</strong> <code>$API_KEY</code> only exists in the shell where it was exported. If <code>curl</code> runs in a second terminal, re-export <code>API_KEY</code> there or load it from <code>.env</code> first.</div>
 
 <h2 id="library">Library examples</h2>
 <pre><code>from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
@@ -271,7 +272,7 @@ sender.send("user@example.com", "Hi", "&lt;p&gt;Hello&lt;/p&gt;")
 
 # Magic link
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "abc123token",
+    "user@example.com", "User Name", "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
 )
 
 # OTP
@@ -297,10 +298,11 @@ curl http://127.0.0.1:8000/health</code></pre>
   <li><strong>Protect <code>/docs</code> and <code>/metrics</code></strong> — disable them at the edge or require auth. Set <code>METRICS_REQUIRE_AUTH=true</code>.</li>
   <li><strong>Store secrets out of source.</strong> Keep <code>API_KEY</code>, <code>WEBHOOK_SECRET</code>, and SMTP credentials in environment variables or a secret manager. Generate <code>API_KEY</code> with <code>openssl rand -hex 32</code>.</li>
   <li><strong>Trust boundary.</strong> <code>email-service</code> sends auth emails. It does not generate, store, verify, or expire login tokens. The caller owns token entropy (≥ <code>secrets.token_urlsafe(32)</code>), expiration, single-use enforcement, replay protection, and account-state checks.</li>
+  <li><strong>Do not log raw tokens, OTP codes, <code>token_hash</code> values, full <code>confirmation_url</code> values, or <code>action_link</code> values in production.</strong> They are bearer secrets. Use <code>dry-run</code> or <code>.eml</code> capture mode for non-production debugging.</li>
 </ul>
 
 <h2 id="ops">Webhooks and observability</h2>
-<p>Pass <code>webhook_url</code> in a <code>/send*</code> request body to receive the delivery result asynchronously. The service signs the payload with both a legacy V1 header and a timestamp-bound V2 header; new receivers should validate V2. See <a href="webhooks.md">webhooks.md</a>.</p>
+<p>Pass <code>webhook_url</code> in a <code>/send*</code> request body to receive the delivery result asynchronously. The service signs the payload with both a legacy V1 header and a timestamp-bound V2 header; new receivers should validate V2. See <a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">webhooks.md</a>.</p>
 <p>Observability is opt-in and off by default:</p>
 <ul>
   <li>Prometheus metrics at <code>/metrics</code> (<code>METRICS_ENABLED=true</code>, <code>METRICS_REQUIRE_AUTH=true</code> recommended).</li>
@@ -312,21 +314,22 @@ curl http://127.0.0.1:8000/health</code></pre>
 <h2 id="notes">What it is not</h2>
 <ul>
   <li>Not a mail server. It talks to your existing SMTP provider; it does not accept inbound mail or handle MX.</li>
-  <li>Not a full auth platform. It does not store users, sessions, or tokens.</li>
+  <li>Not a full auth platform. It does not generate, store, verify, or expire login tokens, manage sessions, or store users.</li>
+  <li>Not Supabase Auth, Auth0, Clerk, Keycloak, or any other auth platform. It only delivers email another system decided to send.</li>
   <li>Not a marketing or bulk-email platform. No bounce processing, suppression lists, or deliverability tooling.</li>
   <li>Not a managed-email replacement for Resend, Postmark, SendGrid, Mailgun, or SES. Those bring deliverability, reputation, and SLAs that a small self-hosted gateway cannot match.</li>
 </ul>
 
 <h2 id="links">Useful links</h2>
 <ul>
-  <li><a href="../README.md">README</a></li>
-  <li><a href="../README.ko.md">Korean README</a></li>
-  <li><a href="api.md">API reference (docs/api.md)</a></li>
-  <li><a href="configuration.md">Configuration (docs/configuration.md)</a></li>
-  <li><a href="deployment.md">Deployment hardening (docs/deployment.md)</a></li>
-  <li><a href="webhooks.md">Webhooks (docs/webhooks.md)</a></li>
-  <li><a href="operations.md">Operations (docs/operations.md)</a></li>
-  <li><a href="alternatives.md">Alternatives (docs/alternatives.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.md">README</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/README.ko.md">Korean README</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/api.md">API reference (docs/api.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/configuration.md">Configuration (docs/configuration.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/deployment.md">Deployment hardening (docs/deployment.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/webhooks.md">Webhooks (docs/webhooks.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/operations.md">Operations (docs/operations.md)</a></li>
+  <li><a href="https://github.com/hwan96-ai/email-service/blob/master/docs/alternatives.md">Alternatives (docs/alternatives.md)</a></li>
   <li><a href="https://pypi.org/project/hwan-email-service/">PyPI: hwan-email-service</a></li>
   <li><a href="https://github.com/hwan96-ai/email-service">GitHub: hwan96-ai/email-service</a></li>
 </ul>

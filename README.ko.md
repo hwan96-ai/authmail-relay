@@ -113,6 +113,9 @@ curl -X POST http://127.0.0.1:8000/send \
 # → {"sent":true}
 ```
 
+> `$API_KEY` 는 export한 셸 안에만 존재한다. `curl` 을 다른 터미널에서 실행한다면
+> 그 터미널에서 `API_KEY` 를 다시 export하거나 `.env` 에서 먼저 불러와야 한다.
+
 OpenAPI 문서: <http://127.0.0.1:8000/docs>.
 
 전체 HTTP 엔드포인트 레퍼런스, dry-run 모드, 멱등성(idempotency), Python 클라이언트
@@ -155,7 +158,7 @@ sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
 # 매직 링크
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "abc123token",
+    "user@example.com", "User Name", "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
 )
 
 # OTP
@@ -164,6 +167,8 @@ OTPNotifier(sender).send("user@example.com", "User Name", "482901")
 
 전체 라이브러리 API(`SmtpSender`, `MagicLinkNotifier`, `OTPNotifier`,
 `TemplateNotifier`, 커스텀 notifier, 재시도): [docs/api.md](docs/api.md#library-mode).
+
+HTTP 클라이언트 SDK(`EmailServiceClient`)는 [docs/api.md#library-mode](docs/api.md#library-mode) 참고.
 
 ---
 
@@ -185,6 +190,10 @@ OTPNotifier(sender).send("user@example.com", "User Name", "482901")
 **신뢰 경계:** 이 서비스는 인증 메일을 *발송*만 한다. 로그인 토큰의 생성, 저장,
 검증, 만료는 하지 **않는다**. 토큰 엔트로피(`secrets.token_urlsafe(32)` 이상),
 만료, 일회성 사용 강제, 재생 방지, 계정 상태 확인은 호출자의 책임이다.
+
+email-service 앞단에 Supabase Auth 또는 다른 인증 제공자를 둔다면, 토큰의 생성과
+검증은 email-service가 아니라 그 제공자가 담당한다.
+[docs/supabase-auth.md](docs/supabase-auth.md) 참고.
 
 운영 체크리스트 전문: [docs/deployment.md](docs/deployment.md).
 취약점 신고: [SECURITY.md](SECURITY.md).
