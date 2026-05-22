@@ -251,10 +251,10 @@ python -m email_service test --to me@example.com</code></pre>
   -d '{
     "to": "user@example.com",
     "user_name": "User Name",
-    "token": "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
+    "token": "$TOKEN",
     "base_url": "https://myapp.com"
   }'</code></pre>
-<p>토큰의 생성, 저장, 만료, 일회성 보장은 호출자의 책임이다. <code>email-service</code>는 메일을 보낼 뿐이다.</p>
+<p>토큰의 생성, 저장, 만료, 일회성 보장은 호출자의 책임이다. <code>email-service</code>는 메일을 보낼 뿐이다. <code>$TOKEN</code>은 호출자 앱에서 생성한다 — 예: <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — 또는 인증 제공자가 발급한 토큰을 그대로 전달한다.</p>
 <div class="warn"><strong>두 번째 터미널 함정.</strong> <code>$API_KEY</code>는 export한 셸 안에만 존재한다. 다른 터미널에서 <code>curl</code>을 실행한다면 그 터미널에서 <code>API_KEY</code>를 다시 export하거나 <code>.env</code>에서 불러와야 한다.</div>
 
 <h2 id="library">라이브러리 사용 예시</h2>
@@ -271,8 +271,12 @@ sender = SmtpSender(SmtpConfig(
 sender.send("user@example.com", "Hi", "&lt;p&gt;Hello&lt;/p&gt;")
 
 # Magic link
+# 토큰은 호출자 책임이다. 자체 인증이면 아래처럼 고엔트로피 토큰을 발급하고,
+# Supabase 같은 외부 인증을 쓴다면 그 제공자가 만든 토큰을 전달한다.
+import secrets
+token = secrets.token_urlsafe(32)
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
+    "user@example.com", "User Name", token,
 )
 
 # OTP

@@ -12,10 +12,8 @@ build/
 # Internal agent artifacts (Claude Code, Compound, Plan→Generate→Evaluate pipeline)
 /.claude/
 /CLAUDE.md
-/docs/claude/
-/docs/solutions/
+/internal/
 /docs/process/
-/docs/public-readiness-goal.md
 /reports/
 /roadmap/
 /skills/

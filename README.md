@@ -158,8 +158,12 @@ sender = SmtpSender(SmtpConfig(
 sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
 # Magic link
+# The caller owns token generation. For custom auth, generate a high-entropy
+# opaque token; if you use an auth provider (e.g. Supabase), use the token it issues.
+import secrets
+token = secrets.token_urlsafe(32)
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
+    "user@example.com", "User Name", token,
 )
 
 # OTP

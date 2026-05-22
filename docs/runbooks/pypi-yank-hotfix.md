@@ -50,7 +50,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
    git checkout -b hotfix/yank-0.4.0
    ```
 
-2. bugfix 적용. Code Gate (`/hwan-refactor-code`) 통과 확인.
+2. bugfix 적용. 코드 품질 검토(code quality review) 통과 확인.
 
 3. version bump:
    - `pyproject.toml`: `version = "0.4.1"`
@@ -60,7 +60,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
 
 ### Sprint 1 — Release
 
-5. Release Gate (`/hwan-refactor-git`) 통과 확인.
+5. 릴리스 준비 검토(release readiness review) 통과 확인.
 
 6. **새 tag push**:
    ```

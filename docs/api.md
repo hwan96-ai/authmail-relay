@@ -240,8 +240,10 @@ notifier = MagicLinkNotifier(
     expire_minutes=15,
 )
 
-notifier.send("user@example.com", "User Name", "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>")
-# Body links to https://myapp.com/set-password?token=<that opaque value, URL-encoded>
+import secrets
+token = secrets.token_urlsafe(32)  # caller-owned; or use a token issued by your auth provider
+notifier.send("user@example.com", "User Name", token)
+# Body links to https://myapp.com/set-password?token=<that token, URL-encoded>
 ```
 
 The `token` argument is URL-encoded and embedded in the link. The package
