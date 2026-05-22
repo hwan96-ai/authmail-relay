@@ -17,7 +17,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
    - PyPI 웹 UI: 프로젝트 → "Manage" → "Releases" → 해당 버전 → "Yank"
    - 또는 `pypi-cli` (configured 시):
      ```
-     pypi yank email-service X.Y.Z --reason "<reason>"
+     pypi yank hwan-email-service X.Y.Z --reason "<reason>"
      ```
 
 2. **caller 영향 평가**:
@@ -34,7 +34,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
    ## [0.4.0] - YANKED 2026-MM-DD
 
    > **YANKED**: This version was yanked due to <reason>. Use 0.4.1 or
-   > later. Reinstall: `pip install --upgrade email-service`.
+   > later. Reinstall: `pip install --upgrade hwan-email-service`.
    ```
 
 2. 이미 설치된 caller 들에게 마이그레이션 가이드 발송.
@@ -76,7 +76,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
 
 8. **manual approve**: 권한자가 GitHub Actions 페이지에서 "Approve" 클릭. 이게 CRIT-3 mitigation 의 핵심.
 
-9. PyPI 페이지 확인: `https://pypi.org/project/email-service/0.4.1/`.
+9. PyPI 페이지 확인: `https://pypi.org/project/hwan-email-service/0.4.1/`.
 
 10. smoke install verify:
     ```

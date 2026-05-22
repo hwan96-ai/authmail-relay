@@ -149,35 +149,36 @@ def on_supabase_email_hook(payload: dict) -> None:
     confirmation_url = data.get("site_url", "") + "/auth/confirm" \
         f"?token_hash={token_hash}&type={action}&next={action_link}"
 
-    if action == "magiclink":
-        client.send_magic_link(
-            to=user["email"],
-            user_name=user.get("user_metadata", {}).get("full_name", "there"),
-            token=confirmation_url,  # email-service renders the link as-is
-        )
-    elif action in ("signup", "recovery", "email_change"):
-        # Fall back to generic templated mail for flows email-service does not
-        # have a dedicated endpoint for.
-        client.send(
-            to=user["email"],
-            subject=_subject_for(action),
-            html_body=_render(action, confirmation_url=confirmation_url),
-        )
+    # All Supabase auth-email flows go through the generic /send endpoint
+    # with the Supabase-generated confirmation_url embedded in html_body.
+    # /send/magic-link is NOT used here — see notes below.
+    client.send(
+        to=user["email"],
+        subject=_subject_for(action),
+        html_body=_render(action, confirmation_url=confirmation_url),
+    )
 ```
 
 Notes:
 
-- This is a conceptual adapter. When Supabase provides a full
-  `confirmation_url`, pass that Supabase-generated URL through as the
-  link value and do not generate a replacement token in email-service.
-  The current `/send/magic-link` API parameter is named `token`; the
-  example reuses that existing magic-link API shape and treats the
-  value as Supabase-owned.
+- **Do not use `/send/magic-link` with a Supabase `confirmation_url`.**
+  The `/send/magic-link` endpoint (and `EmailServiceClient.send_magic_link`)
+  is designed for **bare opaque tokens** that email-service combines with
+  its own `MAGIC_LINK_BASE_URL` env var to build the final link. Passing
+  a full Supabase URL into `token=` would either be double-prefixed by
+  `MAGIC_LINK_BASE_URL` or render incorrectly — email-service does not
+  detect that the value is already a full URL.
+- **For Supabase-generated `confirmation_url` / `action_link`, use the
+  generic `POST /send` (or `EmailServiceClient.send`) with an
+  `html_body` that already contains the full Supabase link.** Supabase
+  owns the URL format; email-service only delivers the rendered HTML.
 - `token`, `token_hash`, `confirmation_url`, and `action_link` are
   treated as opaque values produced by Supabase. email-service does not
   generate, validate, or expire them.
 - The verification step (`token_hash` → session) is performed by
   Supabase Auth when the user clicks the link, not by email-service.
+  email-service never creates a Supabase session, JWT, refresh token,
+  or `auth.uid()` identity.
 
 ---
 
@@ -190,19 +191,26 @@ labelled **conceptual** and should not be treated as a shipped API.
 
 ### Magic link email
 
-Endpoint: `POST /send/magic-link`.
+For Supabase Auth integration, use the generic `POST /send` endpoint
+with the Supabase-generated link embedded in `html_body`. Supabase
+owns the full URL; email-service only delivers it.
 
 ```json
 {
   "to": "user@example.com",
-  "user_name": "Alex",
-  "token": "https://app.example.com/auth/confirm?token_hash=abc…&type=magiclink&next=/dashboard"
+  "subject": "Sign in to Example",
+  "html_body": "<p>Hi Alex,</p><p>Sign in: <a href=\"https://app.example.com/auth/confirm?token_hash=abc…&type=magiclink&next=/dashboard\">click here</a>. This link is issued and verified by Supabase Auth.</p>"
 }
 ```
 
-`token` here is the **full confirmation URL** that Supabase produced
-(or that your adapter assembled from `token_hash` + `redirect_to`).
-email-service does not parse or expire it.
+> **About `POST /send/magic-link`.** That dedicated endpoint exists
+> for callers that hand email-service a **bare opaque token** (not a
+> full URL). email-service then combines the token with its own
+> `MAGIC_LINK_BASE_URL` env var to build the final link. It is **not
+> the right endpoint for Supabase-issued `confirmation_url`s**, which
+> are already complete URLs that Supabase needs to recognise on the
+> way back. Passing a full URL into `token=` would be double-prefixed
+> by `MAGIC_LINK_BASE_URL` or render incorrectly.
 
 ### OTP email
 
@@ -242,14 +250,16 @@ message body.
 ## curl examples
 
 ```bash
-# Magic-link email (token = Supabase-issued confirmation URL)
-curl -X POST http://127.0.0.1:8000/send/magic-link \
+# Magic-link email — generic /send with Supabase-issued confirmation URL
+# in html_body (NOT /send/magic-link, which expects a bare opaque token
+# that email-service combines with MAGIC_LINK_BASE_URL).
+curl -X POST http://127.0.0.1:8000/send \
   -H "Authorization: Bearer $EMAIL_SERVICE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "user@example.com",
-    "user_name": "Alex",
-    "token": "https://app.example.com/auth/confirm?token_hash=abc123&type=magiclink&next=/dashboard"
+    "subject": "Sign in to Example",
+    "html_body": "<p>Hi Alex,</p><p>Sign in: <a href=\"https://app.example.com/auth/confirm?token_hash=abc123&type=magiclink&next=/dashboard\">click here</a>. Issued and verified by Supabase Auth.</p>"
   }'
 
 # OTP email (code = Supabase-issued OTP)

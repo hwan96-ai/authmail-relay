@@ -4,6 +4,15 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Documentation
+
+- Added Korean README (`README.ko.md`) and bilingual usage guides served via GitHub Pages (English + 한국어).
+- Added `docs/supabase-auth.md` integration boundary notes — Supabase Auth owns users, OTPs, tokens, sessions, JWTs, and `auth.uid()` RLS; email-service only delivers email. Added `docs/providers.md` provider index.
+- Tightened token-safety guidance (do not log raw tokens, `token_hash`, or full `confirmation_url`s in production) and polished onboarding / copy-paste examples across README and usage guides.
+- Fixed stale PyPI distribution name (`email-service` → `hwan-email-service`) in `docs/runbooks/pypi-yank-hotfix.md` so yank/reinstall commands and PyPI URLs match the published package.
+- Refined Supabase Auth conceptual adapter and sample payloads to use generic `POST /send` with Supabase-issued `confirmation_url` embedded in `html_body`, and clarified that `/send/magic-link` is for bare opaque tokens combined with `MAGIC_LINK_BASE_URL`.
+- Added a Reference section to the GitHub Pages landing page linking API, configuration, deployment, webhooks, operations, Supabase Auth notes, and provider notes.
+
 ## [0.4.2] - 2026-05-22
 
 Metadata-only patch release. **No API or behavior changes.** Republishes `0.4.1` to refresh PyPI project metadata.
