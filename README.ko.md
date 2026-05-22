@@ -157,8 +157,12 @@ sender = SmtpSender(SmtpConfig(
 sender.send("user@example.com", "Hi", "<p>Hello</p>")
 
 # 매직 링크
+# 토큰은 호출자 책임이다. 자체 인증이면 아래처럼 고엔트로피 토큰을 발급하고,
+# Supabase 같은 외부 인증을 쓴다면 그 제공자가 만든 토큰을 전달한다.
+import secrets
+token = secrets.token_urlsafe(32)
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "<인증 제공자가 만든 불투명한 값 — 자체 인증을 쓴다면 최소 secrets.token_urlsafe(32) 이상>",
+    "user@example.com", "User Name", token,
 )
 
 # OTP

@@ -251,10 +251,10 @@ python -m email_service test --to me@example.com</code></pre>
   -d '{
     "to": "user@example.com",
     "user_name": "User Name",
-    "token": "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
+    "token": "$TOKEN",
     "base_url": "https://myapp.com"
   }'</code></pre>
-<p>The caller is responsible for generating, storing, expiring, and single-use enforcing the token. <code>email-service</code> only sends the mail.</p>
+<p>The caller is responsible for generating, storing, expiring, and single-use enforcing the token. <code>email-service</code> only sends the mail. Generate <code>$TOKEN</code> in your app — e.g. <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code> — or pass through the token issued by your auth provider.</p>
 <div class="warn"><strong>Second-terminal trap.</strong> <code>$API_KEY</code> only exists in the shell where it was exported. If <code>curl</code> runs in a second terminal, re-export <code>API_KEY</code> there or load it from <code>.env</code> first.</div>
 
 <h2 id="library">Library examples</h2>
@@ -271,8 +271,12 @@ sender = SmtpSender(SmtpConfig(
 sender.send("user@example.com", "Hi", "&lt;p&gt;Hello&lt;/p&gt;")
 
 # Magic link
+# The caller owns token generation. For custom auth, generate a high-entropy
+# opaque token; if you use an auth provider (e.g. Supabase), use the token it issues.
+import secrets
+token = secrets.token_urlsafe(32)
 MagicLinkNotifier(sender, base_url="https://myapp.com").send(
-    "user@example.com", "User Name", "<opaque value from your auth provider — for custom auth use at least secrets.token_urlsafe(32)>",
+    "user@example.com", "User Name", token,
 )
 
 # OTP
