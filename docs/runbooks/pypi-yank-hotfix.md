@@ -3,8 +3,8 @@
 ## 컨텍스트
 
 PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
-- `pip install email-service` (no version) → yanked 버전 제외
-- `pip install email-service==X.Y.Z` (exact) → yanked 버전 그대로 설치 가능
+- `pip install hwan-email-service` (no version) → yanked 버전 제외
+- `pip install hwan-email-service==X.Y.Z` (exact) → yanked 버전 그대로 설치 가능
 - 버전 번호는 **영구 소진** — 같은 번호 재사용 절대 불가
 
 따라서 잘못된 버전은 yank + 핫픽스 버전 publish 2-step.
@@ -21,7 +21,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
      ```
 
 2. **caller 영향 평가**:
-   - 메트릭: `pip install email-service==X.Y.Z` 시도 횟수 (PyPI Stats 통해)
+   - 메트릭: `pip install hwan-email-service==X.Y.Z` 시도 횟수 (PyPI Stats 통해)
    - caller 시스템들 / Slack 공지
 
 3. **다음 핫픽스 버전 결정**:
@@ -80,7 +80,7 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
 
 10. smoke install verify:
     ```
-    pip install email-service==0.4.1
+    pip install hwan-email-service==0.4.1
     python -c "import email_service; print(email_service.__version__)"
     ```
 
@@ -103,3 +103,4 @@ PyPI 는 **deletion 불가, yank 만 가능**. 잘못된 버전 publish 시:
 - **Release Gate BLOCK 시 무조건 tag push 금지**.
 - `build-and-smoke` job 의 tag-vs-version 검증 통과 확인.
 - `pypi` environment 의 required reviewers 가 설정되어 있는지 매 release 전 확인.
+
