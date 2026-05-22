@@ -286,6 +286,12 @@ End-to-end integration snippets for common Python frameworks:
 A longer comparison, including self-hosted email platforms, lives in
 [docs/alternatives.md](docs/alternatives.md).
 
+Using email-service alongside Supabase Auth? See
+[Supabase Auth integration notes](docs/supabase-auth.md) — email-service
+delivers the email, Supabase Auth still owns tokens, sessions, and
+`auth.uid()` identity. Per-provider notes index:
+[docs/providers.md](docs/providers.md).
+
 ---
 
 ## Development

@@ -276,6 +276,11 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 자체 호스팅 메일 플랫폼 포함 상세 비교: [docs/alternatives.md](docs/alternatives.md).
 
+Supabase Auth와 함께 쓰는 경우:
+[Supabase Auth 연동 가이드](docs/supabase-auth.md) 참고 — email-service는 이메일
+전송만 담당하고, 토큰/세션/`auth.uid()` 신원은 Supabase Auth가 계속 소유한다.
+프로바이더별 인덱스: [docs/providers.md](docs/providers.md).
+
 ---
 
 ## 개발
