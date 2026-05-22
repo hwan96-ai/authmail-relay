@@ -4,7 +4,7 @@ All HTTP-mode configuration is via environment variables. In library mode, most
 of these are irrelevant — pass values directly to `SmtpConfig` / `SmtpSender`
 instead.
 
-`email-service` fails fast at startup if a required variable is missing.
+`authmail-relay` fails fast at startup if a required variable is missing.
 
 ## Required
 

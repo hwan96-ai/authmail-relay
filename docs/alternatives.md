@@ -1,6 +1,6 @@
 # Alternatives & positioning
 
-`email-service` is small on purpose. Other categories of tool exist for
+`authmail-relay` is small on purpose. Other categories of tool exist for
 different problems — pick the one that matches your real constraint.
 
 ## Managed email providers
@@ -13,7 +13,7 @@ different problems — pick the one that matches your real constraint.
 lists, bounce/complaint processing, analytics dashboards, vendor support, or
 contractual SLAs.
 
-`email-service` does **not** replace these. It is a thin self-hosted gateway
+`authmail-relay` does **not** replace these. It is a thin self-hosted gateway
 in front of an SMTP account — including, optionally, an SMTP relay provided
 by one of these vendors.
 
@@ -27,7 +27,7 @@ by one of these vendors.
 per-tenant API keys, queues, dashboards, deliverability tooling, or list
 management.
 
-`email-service` is much smaller. It targets the narrow "send a magic link /
+`authmail-relay` is much smaller. It targets the narrow "send a magic link /
 OTP / password-reset" use case for an internal app.
 
 ## Full auth platforms
@@ -42,7 +42,7 @@ OTP / password-reset" use case for an internal app.
 password hashing, account verification and recovery flows, MFA, or any
 identity primitives.
 
-`email-service` does **not** implement any of that. It sends the email; it
+`authmail-relay` does **not** implement any of that. It sends the email; it
 does not generate, store, verify, or expire tokens. The caller stays
 responsible for entropy, lifecycle, and replay protection.
 
@@ -53,10 +53,10 @@ responsible for entropy, lifecycle, and replay protection.
 **Use it if:** you just want an email-sending library inside one FastAPI app
 and don't need a separate service.
 
-`email-service` overlaps with this in library mode, but the value-add is the
+`authmail-relay` overlaps with this in library mode, but the value-add is the
 HTTP service mode that lets multiple apps share one SMTP credential set.
 
-## When `email-service` is the right tool
+## When `authmail-relay` is the right tool
 
 - You already have an SMTP account and want to keep using it.
 - You have one or more internal apps that need to send transactional auth

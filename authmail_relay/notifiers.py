@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from html import escape
 from urllib.parse import urlencode
 
-from email_service.sender import SendResult, SmtpSender
+from authmail_relay.sender import SendResult, SmtpSender
 
 
 # Email templates use accessible markup:

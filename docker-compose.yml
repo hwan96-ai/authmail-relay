@@ -1,8 +1,8 @@
 services:
-  email-service:
+  authmail-relay:
     build: .
-    image: email-service:latest
-    container_name: email-service
+    image: authmail-relay:latest
+    container_name: authmail-relay
     env_file:
       - path: .env
         required: false

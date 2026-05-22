@@ -1,16 +1,16 @@
-# email-service
+# authmail-relay
 
-[![PyPI](https://img.shields.io/pypi/v/hwan-email-service.svg)](https://pypi.org/project/hwan-email-service/)
+[![PyPI](https://img.shields.io/pypi/v/authmail-relay.svg)](https://pypi.org/project/authmail-relay/)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> 자체 SMTP를 사용하는 Python/FastAPI 팀을 위한 작은 셀프호스팅 인증 메일 서비스.
+> 인증 메일 전용 셀프호스팅 SMTP 릴레이.
 
-언어: [English](README.md) · **한국어** · [HTML Usage Guide](https://hwan96-ai.github.io/email-service/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/email-service/usage.ko.html)
+언어: [English](README.md) · **한국어** · [HTML Usage Guide](https://hwan96-ai.github.io/authmail-relay/usage.html) · [한국어 사용 가이드](https://hwan96-ai.github.io/authmail-relay/usage.ko.html)
 
 <sub>HTML 가이드는 GitHub Pages에서 웹페이지로 열립니다.</sub>
 
-`email-service` 는 팀이 보유한 SMTP 계정을 통해 **매직 링크(magic link)**, **OTP**,
+`authmail-relay` 는 팀이 보유한 SMTP 계정을 통해 **매직 링크(magic link)**, **OTP**,
 **비밀번호 재설정(password reset)** 메일을 보내는 작고 셀프호스팅 가능한 서비스다.
 SMTP 자격증명과 메일 템플릿 로직을 인증 메일이 필요한 모든 앱에서 분리해, 각 앱은
 Bearer API 키로 내부 HTTP 엔드포인트 하나만 호출하거나, Python 라이브러리로 임포트해
@@ -20,7 +20,7 @@ Bearer API 키로 내부 HTTP 엔드포인트 하나만 호출하거나, Python 
 앱 / 인증 서버
       │  Bearer API key
       ▼
-  email-service     ← SMTP 자격증명은 여기에만 존재
+  authmail-relay    ← SMTP 자격증명은 여기에만 존재
       │
       ▼
  SMTP 제공자  ──►  사용자 메일함
@@ -48,21 +48,29 @@ Bearer API 키로 내부 HTTP 엔드포인트 하나만 호출하거나, Python 
 
 ## 패키지 이름
 
-저장소 이름, PyPI 배포 이름, Python 임포트 패키지 이름이 모두 다르다.
+저장소, PyPI 배포, Python 임포트 패키지가 이제 모두 같은 이름을 공유한다.
 
 | | 이름 |
 |---|---|
-| Repository / service | `email-service` |
-| PyPI distribution | `hwan-email-service` |
-| Python import | `email_service` |
+| Repository / service | `authmail-relay` |
+| PyPI distribution | `authmail-relay` |
+| Python import | `authmail_relay` |
 
 ```bash
-pip install hwan-email-service
+pip install authmail-relay
 ```
 
 ```python
-import email_service
+import authmail_relay
 ```
+
+> **마이그레이션 안내.** 이전에는 PyPI 배포명이 `hwan-email-service`, Python 임포트
+> 패키지가 `email_service`, 저장소 이름이 `email-service` 였다. 이번 릴리스에는
+> 얇은 `email_service` 호환 shim이 함께 포함되어 있어 기존 `import email_service` /
+> `from email_service import …` 코드가 계속 동작하면서 `DeprecationWarning` 을
+> 출력한다. shim은 다음 메이저 릴리스에서 제거되므로, 가능한 시점에
+> `authmail_relay` 로 임포트를 갱신할 것. 자세한 내용은
+> [CHANGELOG.md](CHANGELOG.md) 의 리네이밍 항목 참고.
 
 ---
 
@@ -70,10 +78,10 @@ import email_service
 
 ```bash
 # 라이브러리 모드 (추가 의존성 없음)
-pip install hwan-email-service
+pip install authmail-relay
 
 # HTTP 서비스 모드 (FastAPI + uvicorn)
-pip install "hwan-email-service[http]"
+pip install "authmail-relay[http]"
 ```
 
 요구 버전: **Python 3.10+**.
@@ -81,25 +89,25 @@ pip install "hwan-email-service[http]"
 아직 릴리스되지 않은 최신 커밋을 git에서 바로 설치:
 
 ```bash
-pip install "hwan-email-service[http] @ git+https://github.com/hwan96-ai/email-service.git"
+pip install "authmail-relay[http] @ git+https://github.com/hwan96-ai/authmail-relay.git"
 ```
 
 ---
 
 ## Quickstart — HTTP 서비스 모드
 
-`email-service` 를 독립 서비스로 실행한다. 다른 앱은 Bearer API 키와 함께 HTTP로
+`authmail-relay` 를 독립 서비스로 실행한다. 다른 앱은 Bearer API 키와 함께 HTTP로
 호출한다. SMTP 자격증명은 이 서비스의 환경 변수에만 존재한다.
 
 ```bash
-pip install "hwan-email-service[http]"
+pip install "authmail-relay[http]"
 
 export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 export API_KEY=$(openssl rand -hex 32)
 
-python -m email_service
+python -m authmail_relay
 # → Uvicorn running on http://127.0.0.1:8000
 ```
 
@@ -130,7 +138,7 @@ export SMTP_HOST=smtp.gmail.com
 export SMTP_USER=sender@gmail.com
 export SMTP_PASSWORD=app-password
 
-python -m email_service test --to me@example.com
+python -m authmail_relay test --to me@example.com
 #   → SendResult(sent=True, error_code=None, ..., message_id='<...@host>')
 ```
 
@@ -140,12 +148,12 @@ python -m email_service test --to me@example.com
 
 ## Quickstart — 라이브러리 모드
 
-`email_service` 를 하나의 Python/FastAPI 앱 안에서 직접 임포트한다. 별도의 내부
+`authmail_relay` 를 하나의 Python/FastAPI 앱 안에서 직접 임포트한다. 별도의 내부
 HTTP 게이트웨이가 필요하지 않을 때 적합하다.
 
 ```python
-from email_service import SmtpSender, MagicLinkNotifier, OTPNotifier
-from email_service.sender import SmtpConfig
+from authmail_relay import SmtpSender, MagicLinkNotifier, OTPNotifier
+from authmail_relay.sender import SmtpConfig
 
 sender = SmtpSender(SmtpConfig(
     host="smtp.gmail.com",
@@ -178,7 +186,7 @@ HTTP 클라이언트 SDK(`EmailServiceClient`)는 [docs/api.md#library-mode](doc
 
 ## 보안 — 배포 전에 반드시 읽을 것
 
-`email-service` 는 **내부** 서비스로 설계되었다. 셀프호스팅 인증 메일 서비스는 잘못
+`authmail-relay` 는 **내부** 서비스로 설계되었다. 셀프호스팅 인증 메일 서비스는 잘못
 노출되면 악용될 수 있다. 운영 배포 전 다음 항목을 필수 요구사항으로 다룰 것:
 
 - **공용 인터넷에 직접 노출하지 말 것.** 프라이빗 네트워크/VPC 내부의 리버스 프록시
@@ -195,8 +203,8 @@ HTTP 클라이언트 SDK(`EmailServiceClient`)는 [docs/api.md#library-mode](doc
 검증, 만료는 하지 **않는다**. 토큰 엔트로피(`secrets.token_urlsafe(32)` 이상),
 만료, 일회성 사용 강제, 재생 방지, 계정 상태 확인은 호출자의 책임이다.
 
-email-service 앞단에 Supabase Auth 또는 다른 인증 제공자를 둔다면, 토큰의 생성과
-검증은 email-service가 아니라 그 제공자가 담당한다.
+authmail-relay 앞단에 Supabase Auth 또는 다른 인증 제공자를 둔다면, 토큰의 생성과
+검증은 authmail-relay가 아니라 그 제공자가 담당한다.
 [docs/supabase-auth.md](docs/supabase-auth.md) 참고.
 
 운영 체크리스트 전문: [docs/deployment.md](docs/deployment.md).
@@ -259,7 +267,7 @@ docker compose -f docker-compose.dev.yml up -d --build
   `METRICS_REQUIRE_AUTH=true` 권장).
 - **구조화된 JSON 로그**(`EMAIL_SERVICE_LOG_FORMAT=json`). 수신자 주소는 해시
   처리(SHA-256, 앞 8자)되며 평문으로 기록되지 않는다.
-- **`X-Request-ID` 전파** — gateway → email-service → SMTP 발송 로그까지 일관 전달.
+- **`X-Request-ID` 전파** — gateway → authmail-relay → SMTP 발송 로그까지 일관 전달.
 - **SMTP 재시도** — 라이브러리 모드에서 제한된 지수 백오프(`max_retries=N`).
 
 운영 가이드 전문: [docs/operations.md](docs/operations.md).
@@ -285,12 +293,12 @@ docker compose -f docker-compose.dev.yml up -d --build
 | 관리형 딜리버러빌리티, 바운스, SLA, 대시보드 | Resend / Postmark / SendGrid / Mailgun / Amazon SES |
 | 완전한 사용자/세션/RBAC/비밀번호 플로우 | Supabase Auth, Ory Kratos, Keycloak, Authentik, Appwrite |
 | 하나의 FastAPI 앱 안에서 쓰는 메일 라이브러리 | [fastapi-mail](https://github.com/sabuhish/fastapi-mail) |
-| 기존 SMTP 자격증명을 모든 앱에서 분리하는 내부 HTTP 게이트웨이 | **email-service** |
+| 기존 SMTP 자격증명을 모든 앱에서 분리하는 내부 HTTP 게이트웨이 | **authmail-relay** |
 
 자체 호스팅 메일 플랫폼 포함 상세 비교: [docs/alternatives.md](docs/alternatives.md).
 
 Supabase Auth와 함께 쓰는 경우:
-[Supabase Auth 연동 가이드](docs/supabase-auth.md) 참고 — email-service는 이메일
+[Supabase Auth 연동 가이드](docs/supabase-auth.md) 참고 — authmail-relay는 이메일
 전송만 담당하고, 토큰/세션/`auth.uid()` 신원은 Supabase Auth가 계속 소유한다.
 프로바이더별 인덱스: [docs/providers.md](docs/providers.md).
 
@@ -299,8 +307,8 @@ Supabase Auth와 함께 쓰는 경우:
 ## 개발
 
 ```bash
-git clone https://github.com/hwan96-ai/email-service.git
-cd email-service
+git clone https://github.com/hwan96-ai/authmail-relay.git
+cd authmail-relay
 
 pip install -e ".[dev,http]"
 python -m pytest tests/ -v

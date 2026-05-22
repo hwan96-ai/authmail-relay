@@ -67,7 +67,7 @@ caller 측 application 은:
 
 ## 관련
 
-- 코드: `email_service/sender.py` `_send_once` 의 `SMTPServerDisconnected` 분기
+- 코드: `authmail_relay/sender.py` `_send_once` 의 `SMTPServerDisconnected` 분기
 - 회귀 테스트: `tests/test_p0_fixes.py::TestP0_5_DisconnectDuringSendmail`
 - 학습: `code-L10` (SMTP retry classifier 가 phase 식별 필수)
 - 회귀 방지: 본 에러 코드를 retriable 로 분류하지 말 것 (`_RETRIABLE_ERROR_CODES` 에 포함 금지)

@@ -1,11 +1,11 @@
 # Deployment
 
-Production deployment guide for `email-service`. Read [SECURITY.md](../SECURITY.md)
+Production deployment guide for `authmail-relay`. Read [SECURITY.md](../SECURITY.md)
 and the README "Security" section first.
 
 ## Production checklist
 
-Before exposing `email-service` to any production traffic:
+Before exposing `authmail-relay` to any production traffic:
 
 - [ ] `API_KEY` generated with `openssl rand -hex 32` (or equivalent ≥256-bit
       randomness). No example/short strings.
@@ -34,7 +34,7 @@ Before exposing `email-service` to any production traffic:
 
 ## Workers: single vs multi
 
-Several pieces of state in `email-service` are **in-memory, per-process**:
+Several pieces of state in `authmail-relay` are **in-memory, per-process**:
 
 | State | Env var | Scope |
 |---|---|---|
@@ -45,7 +45,7 @@ Several pieces of state in `email-service` are **in-memory, per-process**:
 Recommended patterns:
 
 - **Single worker + sticky LB** — the simplest correct setup. Run
-  `python -m email_service` (workers=1) or pin all calls to one worker via a
+  `python -m authmail_relay` (workers=1) or pin all calls to one worker via a
   sticky load balancer. This is the design target.
 - **Multi-worker** — only if exact rate-limit and idempotency semantics are
   *not* part of your SLA. A shared external store (Redis, etc.) is not
@@ -60,10 +60,10 @@ request will be rejected, but only after memory is briefly consumed.
 Enforce a hard cap at the proxy. nginx example:
 
 ```nginx
-# /etc/nginx/sites-available/email-service
+# /etc/nginx/sites-available/authmail-relay
 location / {
     client_max_body_size 12m;   # 10 MB body + 2 MB headers/overhead
-    proxy_pass http://email-service:8000;
+    proxy_pass http://authmail-relay:8000;
 }
 ```
 

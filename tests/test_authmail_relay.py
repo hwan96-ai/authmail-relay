@@ -1,4 +1,4 @@
-"""email-service unit tests."""
+"""authmail-relay unit tests."""
 import base64
 import email
 import ssl
@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import smtplib
 import socket
 
-from email_service.sender import (
+from authmail_relay.sender import (
     SendResult,
     SmtpSender,
     SmtpConfig,
@@ -23,7 +23,7 @@ from email_service.sender import (
     ERR_STARTTLS_UNSUPPORTED,
     ERR_UNKNOWN,
 )
-from email_service.notifiers import MagicLinkNotifier, OTPNotifier, TemplateNotifier
+from authmail_relay.notifiers import MagicLinkNotifier, OTPNotifier, TemplateNotifier
 
 
 def _make_sender():
@@ -55,7 +55,7 @@ def _mock_server(mock_smtp_cls):
 
 
 class TestSmtpSender:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_send_success(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -68,7 +68,7 @@ class TestSmtpSender:
         mock_server.sendmail.assert_called_once()
         mock_server.__exit__.assert_called_once()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_connection_closed_on_login_failure(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.login.side_effect = RuntimeError("auth failed")
@@ -79,7 +79,7 @@ class TestSmtpSender:
         assert result.sent is False
         mock_server.__exit__.assert_called_once()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_send_failure(self, mock_smtp_cls):
         mock_smtp_cls.side_effect = ConnectionRefusedError("no server")
 
@@ -88,7 +88,7 @@ class TestSmtpSender:
 
         assert result.sent is False
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_no_tls(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -100,7 +100,7 @@ class TestSmtpSender:
 
         mock_server.starttls.assert_not_called()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_no_auth(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -112,7 +112,7 @@ class TestSmtpSender:
 
         mock_server.login.assert_not_called()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_text_body_attached(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -129,7 +129,7 @@ class TestSmtpSender:
         plain = base64.b64decode(parts["text/plain"].get_payload()).decode("utf-8")
         assert plain == "plain fallback"
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_cc_in_header_and_recipients(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -144,7 +144,7 @@ class TestSmtpSender:
         msg = email.message_from_string(raw)
         assert msg["Cc"] == "cc1@test.com, cc2@test.com"
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_bcc_in_recipients_not_header(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -159,7 +159,7 @@ class TestSmtpSender:
         msg = email.message_from_string(raw)
         assert msg["Bcc"] is None
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_returns_false_on_partial_recipient_refusal(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         # smtplib.SMTP.sendmail returns {recipient: (code, msg)} for refused recipients.
@@ -176,7 +176,7 @@ class TestSmtpSender:
         assert result.sent is False
         mock_server.sendmail.assert_called_once()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_date_header_present(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -187,7 +187,7 @@ class TestSmtpSender:
         msg = email.message_from_string(raw)
         assert msg["Date"] is not None and msg["Date"] != ""
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_message_id_header_present(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -202,7 +202,7 @@ class TestSmtpSender:
         assert mid.startswith("<") and mid.endswith(">")
         assert "@" in mid
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_starttls_uses_ssl_default_context(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.has_extn.return_value = True
@@ -217,7 +217,7 @@ class TestSmtpSender:
         assert isinstance(kwargs["context"], ssl.SSLContext)
         mock_server.sendmail.assert_called_once()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_aborts_when_starttls_not_advertised(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.has_extn.return_value = False
@@ -230,7 +230,7 @@ class TestSmtpSender:
         mock_server.login.assert_not_called()
         mock_server.sendmail.assert_not_called()
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_rejects_crlf_in_headers(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -258,7 +258,7 @@ class TestSmtpSender:
 
 
 class TestMagicLinkNotifier:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_send_contains_link(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -273,7 +273,7 @@ class TestMagicLinkNotifier:
         html = _extract_html(mock_server)
         assert "https://app.example.com/set-password?token=abc123token" in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_custom_path(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -287,7 +287,7 @@ class TestMagicLinkNotifier:
         html = _extract_html(mock_server)
         assert "/reset?token=tok" in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_token_url_encoded(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -301,7 +301,7 @@ class TestMagicLinkNotifier:
         assert "token=a%2Bb%26c%3Dd%2F%3D%3D" in html
         assert "a+b&c=d/==" not in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_user_name_html_escaped(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -317,7 +317,7 @@ class TestMagicLinkNotifier:
 
 
 class TestOTPNotifier:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_send_contains_code(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -329,7 +329,7 @@ class TestOTPNotifier:
         html = _extract_html(mock_server)
         assert "482901" in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_user_name_and_payload_escaped(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -345,7 +345,7 @@ class TestOTPNotifier:
 
 
 class TestTemplateNotifier:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_renders_context(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -370,7 +370,7 @@ class TestTemplateNotifier:
         decoded = str(email.header.make_header(email.header.decode_header(msg["Subject"])))
         assert decoded == "[Shop] 주문 1234 확인"
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_missing_context_raises(self, mock_smtp_cls):
         sender = _make_sender()
         notifier = TemplateNotifier(
@@ -385,7 +385,7 @@ class TestTemplateNotifier:
         else:
             assert False, "expected KeyError for missing template key"
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_text_template_attached(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -403,7 +403,7 @@ class TestTemplateNotifier:
         plain = next(p for p in msg.walk() if p.get_content_type() == "text/plain")
         assert base64.b64decode(plain.get_payload()).decode("utf-8") == "hello Alice"
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_autoescape_on_by_default(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -419,7 +419,7 @@ class TestTemplateNotifier:
         assert "&lt;b&gt;x&lt;/b&gt;" in html
         assert "<b>x</b>" not in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_autoescape_escapes_html_body_only(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -447,7 +447,7 @@ class TestTemplateNotifier:
 
 
 class TestMagicLinkPlainText:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_plain_text_alternative_attached(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -466,7 +466,7 @@ class TestMagicLinkPlainText:
 
 
 class TestOTPPlainText:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_plain_text_alternative_attached(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -483,7 +483,7 @@ class TestOTPPlainText:
 
 
 class TestNotifierI18n:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_magic_link_custom_subject_and_template(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -510,7 +510,7 @@ class TestNotifierI18n:
         text = base64.b64decode(plain.get_payload()).decode("utf-8")
         assert "Hello Alice" in text
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_otp_custom_subject_and_template(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -533,7 +533,7 @@ class TestNotifierI18n:
 
 
 class TestTemplateNotifierNoAutoescape:
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_autoescape_false_passes_raw_html(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -551,7 +551,7 @@ class TestTemplateNotifierNoAutoescape:
         assert "<script>x</script>" in html
         assert "&lt;script&gt;" not in html
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_autoescape_true_escapes_same_value(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
 
@@ -581,7 +581,7 @@ class TestSendResult:
         assert not SendResult(sent=False, error_code="x")
 
     def test_message_id_captured_on_success(self):
-        with patch("email_service.sender.smtplib.SMTP") as cls:
+        with patch("authmail_relay.sender.smtplib.SMTP") as cls:
             _mock_server(cls)
             result = _make_sender().send("to@test.com", "s", "<p>x</p>")
         assert result.sent is True
@@ -593,7 +593,7 @@ class TestSendResult:
         assert result.sent is False
         assert result.error_code == ERR_CRLF_IN_HEADER
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_auth_failed_error_code(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.login.side_effect = smtplib.SMTPAuthenticationError(
@@ -603,21 +603,21 @@ class TestSendResult:
         assert result.sent is False
         assert result.error_code == ERR_SMTP_AUTH_FAILED
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_connection_error_code(self, mock_smtp_cls):
         mock_smtp_cls.side_effect = socket.gaierror("name resolution")
         result = _make_sender().send("to@test.com", "s", "<p>x</p>")
         assert result.sent is False
         assert result.error_code == ERR_SMTP_CONNECTION
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_timeout_error_code(self, mock_smtp_cls):
         mock_smtp_cls.side_effect = socket.timeout("timed out")
         result = _make_sender().send("to@test.com", "s", "<p>x</p>")
         assert result.sent is False
         assert result.error_code == ERR_SMTP_TIMEOUT
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_recipient_refused_error_code(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.sendmail.return_value = {"bad@test.com": (550, b"nope")}
@@ -628,7 +628,7 @@ class TestSendResult:
         assert result.error_code == ERR_RECIPIENT_REFUSED
         assert result.refused == ["bad@test.com"]
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_starttls_unsupported_error_code(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.has_extn.return_value = False
@@ -636,7 +636,7 @@ class TestSendResult:
         assert result.sent is False
         assert result.error_code == ERR_STARTTLS_UNSUPPORTED
 
-    @patch("email_service.sender.smtplib.SMTP")
+    @patch("authmail_relay.sender.smtplib.SMTP")
     def test_unknown_error_code_for_generic_exception(self, mock_smtp_cls):
         mock_server = _mock_server(mock_smtp_cls)
         mock_server.sendmail.side_effect = RuntimeError("???")

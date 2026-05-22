@@ -1,4 +1,4 @@
-"""Tests for email_service.async_client.AsyncEmailServiceClient."""
+"""Tests for authmail_relay.async_client.AsyncEmailServiceClient."""
 import asyncio
 import sys
 from pathlib import Path
@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.async_client import AsyncEmailServiceClient
-from email_service.client import EmailServiceError
+from authmail_relay.async_client import AsyncEmailServiceClient
+from authmail_relay.client import EmailServiceError
 
 
 def _async_handler(responses):
@@ -36,7 +36,7 @@ class TestAsyncClient:
 
         async def go():
             async with AsyncEmailServiceClient(
-                "http://email-service:8000", "key",
+                "http://authmail-relay:8000", "key",
                 transport=httpx.MockTransport(h),
             ) as c:
                 return await c.health()
@@ -53,7 +53,7 @@ class TestAsyncClient:
 
         async def go():
             async with AsyncEmailServiceClient(
-                "http://email-service:8000", "key",
+                "http://authmail-relay:8000", "key",
                 transport=httpx.MockTransport(h),
             ) as c:
                 return await c.send_magic_link(
@@ -70,7 +70,7 @@ class TestAsyncClient:
 
         async def go():
             async with AsyncEmailServiceClient(
-                "http://email-service:8000", "key",
+                "http://authmail-relay:8000", "key",
                 transport=httpx.MockTransport(h),
             ) as c:
                 return await c.send_otp("u@x.com", "Bob", "999", dry_run=True)
@@ -78,7 +78,7 @@ class TestAsyncClient:
         _run(go())
         assert reqs[0].headers.get("X-Dry-Run") == "true"
 
-    def test_502_raises_email_service_error(self):
+    def test_502_raises_authmail_relay_error(self):
         h, _ = _async_handler({
             ("POST", "/send"): (
                 502,
@@ -88,7 +88,7 @@ class TestAsyncClient:
 
         async def go():
             async with AsyncEmailServiceClient(
-                "http://email-service:8000", "key",
+                "http://authmail-relay:8000", "key",
                 transport=httpx.MockTransport(h),
             ) as c:
                 await c.send("u@x.com", "Sub", "<p>x</p>")

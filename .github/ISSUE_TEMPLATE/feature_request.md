@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new capability for email-service
+about: Suggest a new capability for authmail-relay
 title: "[Feature] "
 labels: enhancement
 assignees: ''
@@ -12,7 +12,7 @@ assignees: ''
 
 ## Proposed solution
 
-<!-- What would you like email-service to do? Sketch the API if possible:
+<!-- What would you like authmail-relay to do? Sketch the API if possible:
 
     notifier = MyNewNotifier(sender, ...)
     notifier.send(...)
@@ -24,9 +24,9 @@ assignees: ''
 
 ## Scope
 
-- [ ] Library API (`email_service.sender` / `notifiers`)
-- [ ] HTTP service (`email_service.api`)
-- [ ] Client SDK (`email_service.client` / `async_client`)
+- [ ] Library API (`authmail_relay.sender` / `notifiers`)
+- [ ] HTTP service (`authmail_relay.api`)
+- [ ] Client SDK (`authmail_relay.client` / `async_client`)
 - [ ] Docs / examples
 - [ ] Other:
 

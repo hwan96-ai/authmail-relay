@@ -2,7 +2,7 @@
 
 This example wires a post_save signal on the Django ``User`` model to
 ``SmtpSender`` directly (no HTTP service), suitable for monolith deployments
-that import email_service as a library.
+that import authmail_relay as a library.
 
 Drop this into one of your app's ``signals.py`` and ensure it is imported in
 the AppConfig.ready() hook. Don't actually run this file standalone.
@@ -21,8 +21,8 @@ except ImportError:  # pragma: no cover
         "Django is not installed. Install with `pip install django` to use this example."
     )
 
-from email_service.notifiers import TemplateNotifier
-from email_service.sender import SmtpConfig, SmtpSender
+from authmail_relay.notifiers import TemplateNotifier
+from authmail_relay.sender import SmtpConfig, SmtpSender
 
 
 def _build_notifier() -> TemplateNotifier:

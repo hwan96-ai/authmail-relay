@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.api import create_app
-from email_service.logging_config import configure_logging, hash_recipient
-from email_service.notifiers import OTPNotifier
-from email_service.sender import SendResult, SmtpConfig, SmtpSender
+from authmail_relay.api import create_app
+from authmail_relay.logging_config import configure_logging, hash_recipient
+from authmail_relay.notifiers import OTPNotifier
+from authmail_relay.sender import SendResult, SmtpConfig, SmtpSender
 
 
 API_KEY = "test-key"
@@ -84,7 +84,7 @@ class TestMetricsEndpoint:
     def test_returns_404_when_disabled(self, monkeypatch):
         monkeypatch.delenv("METRICS_ENABLED", raising=False)
         # Reload metrics module so METRICS_ENABLED is re-evaluated.
-        import email_service.metrics as m
+        import authmail_relay.metrics as m
         importlib.reload(m)
         client = TestClient(_app())
         resp = client.get("/metrics")
@@ -93,10 +93,10 @@ class TestMetricsEndpoint:
     def test_returns_prometheus_when_enabled(self, monkeypatch):
         prom = pytest.importorskip("prometheus_client")  # noqa: F841
         monkeypatch.setenv("METRICS_ENABLED", "true")
-        import email_service.metrics as m
+        import authmail_relay.metrics as m
         importlib.reload(m)
         # Reload sender too so it picks up the new metric objects.
-        import email_service.sender as s
+        import authmail_relay.sender as s
         importlib.reload(s)
         # Rebuild app *after* reload.
         sender = MagicMock()
@@ -166,7 +166,7 @@ class TestPIISafeLogging:
         fake_server.has_extn.return_value = True
         fake_server.sendmail.return_value = {}
         recipient = "alice@example.com"
-        with caplog.at_level(logging.INFO, logger="email_service.sender"):
+        with caplog.at_level(logging.INFO, logger="authmail_relay.sender"):
             with patch("smtplib.SMTP") as smtp_cls:
                 smtp_cls.return_value.__enter__.return_value = fake_server
                 sender.send(recipient, "s", "<p>x</p>")

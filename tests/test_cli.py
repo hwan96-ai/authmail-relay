@@ -1,4 +1,4 @@
-"""Tests for the `python -m email_service` CLI."""
+"""Tests for the `python -m authmail_relay` CLI."""
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +14,7 @@ def _run(*args: str, env_extra: dict[str, str] | None = None) -> subprocess.Comp
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, "-m", "email_service", *args],
+        [sys.executable, "-m", "authmail_relay", *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,

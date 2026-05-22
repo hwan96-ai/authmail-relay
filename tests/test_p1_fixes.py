@@ -23,15 +23,15 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.api import (  # noqa: E402
+from authmail_relay.api import (  # noqa: E402
     MAX_IDEMPOTENCY_KEY_LEN,
     _IdempotencyCache,
     _SlidingWindowLimiter,
     create_app,
 )
-from email_service.notifiers import OTPNotifier  # noqa: E402
-from email_service.sender import SendResult  # noqa: E402
-from email_service.webhooks import (  # noqa: E402
+from authmail_relay.notifiers import OTPNotifier  # noqa: E402
+from authmail_relay.sender import SendResult  # noqa: E402
+from authmail_relay.webhooks import (  # noqa: E402
     SIGNATURE_HEADER,
     SIGNATURE_HEADER_V2,
     TIMESTAMP_HEADER,
@@ -102,7 +102,7 @@ class TestP1A_FetchTimeSSRFRevalidation:
 
         # Patch the resolver inside url_validation by monkeypatching
         # socket.getaddrinfo (validate_webhook_url falls back to it).
-        monkeypatch.setattr("email_service.url_validation.socket.getaddrinfo",
+        monkeypatch.setattr("authmail_relay.url_validation.socket.getaddrinfo",
                             fake_resolver)
 
         transport_called = {"n": 0}
@@ -125,7 +125,7 @@ class TestP1A_FetchTimeSSRFRevalidation:
 
     def test_validation_failure_increments_failure_counter(self):
         """A blocked webhook must be counted as a delivery failure."""
-        from email_service.metrics import email_webhook_failed_total
+        from authmail_relay.metrics import email_webhook_failed_total
 
         # Read current counter value (prometheus counters expose _value).
         try:
@@ -380,7 +380,7 @@ class TestNewV1_PerRetrySSRFRevalidation:
             return [(socket.AF_INET, None, None, "", ("127.0.0.1", 0))]
 
         monkeypatch.setattr(
-            "email_service.url_validation.socket.getaddrinfo",
+            "authmail_relay.url_validation.socket.getaddrinfo",
             rebinding_resolver,
         )
         # httpx returns 503 on first POST, forcing a retry. Second attempt
@@ -392,7 +392,7 @@ class TestNewV1_PerRetrySSRFRevalidation:
             return httpx.Response(503)
 
         client = httpx.Client(transport=httpx.MockTransport(transport_handler))
-        with patch("email_service.webhooks.time.sleep"):
+        with patch("authmail_relay.webhooks.time.sleep"):
             result = deliver_webhook(
                 "http://example.com/hook",
                 {"message_id": "<m>"},
@@ -415,7 +415,7 @@ class TestNewV1_PerRetrySSRFRevalidation:
         """Even with no rebind, validator runs once per retry attempt."""
         monkeypatch.setenv("WEBHOOK_ALLOW_HOSTS", "hook")
         validate_calls = {"n": 0}
-        import email_service.webhooks as webhooks_mod
+        import authmail_relay.webhooks as webhooks_mod
         original = webhooks_mod.validate_webhook_url
 
         def counting_validator(url, **kw):
@@ -428,7 +428,7 @@ class TestNewV1_PerRetrySSRFRevalidation:
         client = httpx.Client(
             transport=httpx.MockTransport(lambda r: httpx.Response(500))
         )
-        with patch("email_service.webhooks.time.sleep"):
+        with patch("authmail_relay.webhooks.time.sleep"):
             deliver_webhook(
                 "http://hook/x",
                 {"message_id": "<m>"},

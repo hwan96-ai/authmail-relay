@@ -33,8 +33,8 @@ from typing import Any
 
 import httpx
 
-from email_service.metrics import email_webhook_failed_total
-from email_service.url_validation import validate_webhook_url
+from authmail_relay.metrics import email_webhook_failed_total
+from authmail_relay.url_validation import validate_webhook_url
 
 logger = logging.getLogger(__name__)
 

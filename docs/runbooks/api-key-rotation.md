@@ -33,11 +33,11 @@
 ### 옵션 A: 다운타임 허용 (가장 단순)
 
 1. T0: caller 들에게 1분 전 공지.
-2. T+1min: email-service `API_KEY` 환경변수를 새 값으로 변경 + 재배포.
+2. T+1min: authmail-relay `API_KEY` 환경변수를 새 값으로 변경 + 재배포.
 3. T+2min: caller 시스템들 자기 환경변수 새 키로 갱신 + 재배포.
 4. T+3min: smoke test:
    ```
-   curl -X POST https://email-service.example.com/send \
+   curl -X POST https://authmail-relay.example.com/send \
      -H "Authorization: Bearer <NEW_KEY>" \
      -H "Content-Type: application/json" \
      -H "X-Dry-Run: true" \

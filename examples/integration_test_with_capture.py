@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from email_service.notifiers import MagicLinkNotifier
-from email_service.sender import SmtpConfig, SmtpSender
+from authmail_relay.notifiers import MagicLinkNotifier
+from authmail_relay.sender import SmtpConfig, SmtpSender
 
 
 @pytest.fixture

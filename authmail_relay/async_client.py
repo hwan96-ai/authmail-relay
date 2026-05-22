@@ -1,8 +1,11 @@
-"""HTTP client SDK for email-service.
+"""Async HTTP client SDK for authmail-relay.
 
-Thin wrapper around httpx that sets the Bearer auth header, translates
-``dry_run=True`` into the ``X-Dry-Run: true`` header, and raises on 4xx/5xx
-via ``Response.raise_for_status``.
+Mirrors the sync API in ``authmail_relay.client.EmailServiceClient`` but uses
+``httpx.AsyncClient``. Use this from FastAPI / asyncio code paths.
+
+Example:
+    async with AsyncEmailServiceClient("http://authmail-relay:8000", api_key) as c:
+        await c.send_otp("user@example.com", "홍길동", "482901")
 """
 from __future__ import annotations
 
@@ -10,29 +13,15 @@ from typing import Any
 
 import httpx
 
-
-class EmailServiceError(Exception):
-    """Raised when the email-service returns a 502 (SMTP delivery failure).
-
-    Carries the structured `error_code` from the server response body so
-    callers can branch on it (e.g. retry on `smtp_timeout`, alert on
-    `smtp_auth_failed`).
-    """
-
-    def __init__(self, error_code: str | None, message: str | None,
-                 *, status_code: int = 502):
-        self.error_code = error_code
-        self.message = message
-        self.status_code = status_code
-        super().__init__(f"{error_code}: {message}")
+from authmail_relay.client import EmailServiceError
 
 
-class EmailServiceClient:
-    """Synchronous client for the email-service HTTP API.
+class AsyncEmailServiceClient:
+    """Asynchronous client for the authmail-relay HTTP API.
 
-    Example:
-        with EmailServiceClient("http://email-service:8000", api_key) as c:
-            c.send_otp("user@example.com", "홍길동", "482901")
+    Re-raises :class:`EmailServiceError` on 502 responses, identical to the
+    sync :class:`~authmail_relay.client.EmailServiceClient`. All other 4xx/5xx
+    responses raise :class:`httpx.HTTPStatusError`.
     """
 
     def __init__(
@@ -41,7 +30,7 @@ class EmailServiceClient:
         api_key: str,
         timeout: float = 10.0,
         *,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         kwargs: dict[str, Any] = {
             "base_url": base_url.rstrip("/"),
@@ -50,23 +39,23 @@ class EmailServiceClient:
         }
         if transport is not None:
             kwargs["transport"] = transport
-        self._client = httpx.Client(**kwargs)
+        self._client = httpx.AsyncClient(**kwargs)
 
-    def __enter__(self) -> "EmailServiceClient":
+    async def __aenter__(self) -> "AsyncEmailServiceClient":
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
 
-    def close(self) -> None:
-        self._client.close()
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
-    def health(self) -> dict[str, Any]:
-        resp = self._client.get("/health")
+    async def health(self) -> dict[str, Any]:
+        resp = await self._client.get("/health")
         resp.raise_for_status()
         return resp.json()
 
-    def send(
+    async def send(
         self,
         to: str,
         subject: str,
@@ -80,9 +69,7 @@ class EmailServiceClient:
         webhook_secret: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "to": to,
-            "subject": subject,
-            "html_body": html_body,
+            "to": to, "subject": subject, "html_body": html_body,
         }
         if text_body is not None:
             payload["text_body"] = text_body
@@ -94,9 +81,9 @@ class EmailServiceClient:
             payload["webhook_url"] = webhook_url
         if webhook_secret is not None:
             payload["webhook_secret"] = webhook_secret
-        return self._post("/send", payload, dry_run=dry_run)
+        return await self._post("/send", payload, dry_run=dry_run)
 
-    def send_magic_link(
+    async def send_magic_link(
         self,
         to: str,
         user_name: str,
@@ -113,9 +100,9 @@ class EmailServiceClient:
             payload["webhook_url"] = webhook_url
         if webhook_secret is not None:
             payload["webhook_secret"] = webhook_secret
-        return self._post("/send/magic-link", payload, dry_run=dry_run)
+        return await self._post("/send/magic-link", payload, dry_run=dry_run)
 
-    def send_otp(
+    async def send_otp(
         self,
         to: str,
         user_name: str,
@@ -132,16 +119,14 @@ class EmailServiceClient:
             payload["webhook_url"] = webhook_url
         if webhook_secret is not None:
             payload["webhook_secret"] = webhook_secret
-        return self._post("/send/otp", payload, dry_run=dry_run)
+        return await self._post("/send/otp", payload, dry_run=dry_run)
 
-    def _post(
+    async def _post(
         self, path: str, payload: dict[str, Any], *, dry_run: bool
     ) -> dict[str, Any]:
         headers = {"X-Dry-Run": "true"} if dry_run else None
-        resp = self._client.post(path, json=payload, headers=headers)
+        resp = await self._client.post(path, json=payload, headers=headers)
         if resp.status_code == 502:
-            # Translate 502 into a typed exception so callers can branch on
-            # `error_code` without parsing the JSON themselves.
             try:
                 body = resp.json()
             except Exception:

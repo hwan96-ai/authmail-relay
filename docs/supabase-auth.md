@@ -1,25 +1,25 @@
 # Supabase Auth integration notes
 
-> **email-service is not Supabase Auth.** It is an SMTP-delivery and
+> **authmail-relay is not Supabase Auth.** It is an SMTP-delivery and
 > auth-email gateway. Supabase Auth (or whichever auth provider you choose)
 > remains the source of truth for users, OTPs, sessions, JWTs, refresh
-> tokens, and `auth.uid()` RLS identity. email-service only delivers the
+> tokens, and `auth.uid()` RLS identity. authmail-relay only delivers the
 > email that Supabase (or your caller app) has already decided to send.
 
-This document explains how to integrate `email-service` with a
+This document explains how to integrate `authmail-relay` with a
 [Supabase Auth](https://supabase.com/docs/guides/auth) project **without
-turning email-service into an auth server**. It is integration guidance,
+turning authmail-relay into an auth server**. It is integration guidance,
 not a feature claim.
 
 ---
 
-## What email-service does and does not do
+## What authmail-relay does and does not do
 
-email-service is a small SMTP gateway. It receives an HTTP request from
+authmail-relay is a small SMTP gateway. It receives an HTTP request from
 your trusted backend (or from Supabase Auth via a hook/proxy you control)
 and sends an email through your own SMTP account. That is the whole job.
 
-**email-service does:**
+**authmail-relay does:**
 
 - Deliver magic-link, OTP, and password-reset emails through your SMTP.
 - Apply templates (built-in or `TemplateNotifier`).
@@ -27,7 +27,7 @@ and sends an email through your own SMTP account. That is the whole job.
 - Provide a webhook intake surface and operational visibility (logs,
   metrics, dry-run capture).
 
-**email-service does *not*:**
+**authmail-relay does *not*:**
 
 - Generate OTPs. The OTP value comes from Supabase Auth (or your caller).
 - Store OTPs, magic-link tokens, or any auth secret.
@@ -36,12 +36,12 @@ and sends an email through your own SMTP account. That is the whole job.
 - Exchange a code or `token_hash` for a session.
 - Create Supabase sessions, JWTs, or refresh tokens.
 - Satisfy `auth.uid()` based Row Level Security by itself. The Supabase
-  client session is what `auth.uid()` reads from — email-service never
+  client session is what `auth.uid()` reads from — authmail-relay never
   produces that session.
 
-> ⚠️ **Never use email-service-generated custom OTPs as a substitute for
+> ⚠️ **Never use authmail-relay-generated custom OTPs as a substitute for
 > Supabase Auth if your app relies on `auth.uid()` RLS.** A code that
-> email-service templated into an email is just text in an inbox; it
+> authmail-relay templated into an email is just text in an inbox; it
 > does not log a user in, does not create `auth.users` rows, does not
 > set `auth.uid()`, and cannot be verified by Supabase. Use the OTP that
 > Supabase Auth itself issued (via `signInWithOtp`, etc.) and let
@@ -51,7 +51,7 @@ and sends an email through your own SMTP account. That is the whole job.
 
 ## Responsibility split
 
-| Concern | Supabase Auth | email-service | Caller app |
+| Concern | Supabase Auth | authmail-relay | Caller app |
 |---|---|---|---|
 | User records (`auth.users`) | ✅ owns | ❌ | ❌ |
 | OTP / magic-link token generation | ✅ owns | ❌ | ❌ |
@@ -76,7 +76,7 @@ and sends an email through your own SMTP account. That is the whole job.
 ## Recommended integration pattern
 
 The recommended flow keeps Supabase Auth as the source of truth for
-identity and lets email-service handle only delivery:
+identity and lets authmail-relay handle only delivery:
 
 ```text
 User
@@ -88,7 +88,7 @@ Supabase Auth        ── generates OTP, action_link, token_hash, expiry
 Caller backend       ── decides template, redirect_to, branding
   │  (3) POST /send/* with Bearer API key
   ▼
-email-service        ── renders template, sends via SMTP
+authmail-relay        ── renders template, sends via SMTP
   │  (4) SMTP
   ▼
 SMTP provider  ──►  User inbox
@@ -99,19 +99,19 @@ Supabase Auth        ── verifies token_hash / OTP, issues session
 
 Two implementation shapes are common:
 
-1. **Caller app drives email-service.** Supabase Auth tells your backend
+1. **Caller app drives authmail-relay.** Supabase Auth tells your backend
    (via a webhook, the [Send Email Hook][hook], or your own server-side
    call) that an email needs to go out. Your backend reads the
    Supabase-provided `token`, `token_hash`, `action_link`,
-   `redirect_to`, and `email_action_type`, then calls email-service.
+   `redirect_to`, and `email_action_type`, then calls authmail-relay.
 2. **Custom SMTP relay.** Supabase Auth is configured to use an SMTP
-   server you control, and that SMTP relay forwards to email-service or
-   to your real SMTP. In this case email-service is purely a relay /
+   server you control, and that SMTP relay forwards to authmail-relay or
+   to your real SMTP. In this case authmail-relay is purely a relay /
    template layer; Supabase still generates everything.
 
 In both shapes `token`, `action_link`, `confirmation_url`, and
 `token_hash` are values **generated by Supabase or by the caller**.
-email-service never invents them.
+authmail-relay never invents them.
 
 [hook]: https://supabase.com/docs/guides/auth/auth-hooks/send-email-hook
 
@@ -120,18 +120,18 @@ email-service never invents them.
 ## Conceptual adapter
 
 The adapter below is conceptual — it shows the *shape* of code that
-sits between Supabase Auth's Send Email Hook payload and email-service.
-It is not part of email-service itself.
+sits between Supabase Auth's Send Email Hook payload and authmail-relay.
+It is not part of authmail-relay itself.
 
 ```python
 # Conceptual: handler your backend exposes to Supabase's Send Email Hook.
-# This code is illustrative, not a feature of email-service.
+# This code is illustrative, not a feature of authmail-relay.
 
-from email_service import EmailServiceClient
+from authmail_relay import EmailServiceClient
 
 client = EmailServiceClient(
-    base_url="http://email-service:8000",
-    api_key="…",  # email-service API key
+    base_url="http://authmail-relay:8000",
+    api_key="…",  # authmail-relay API key
 )
 
 def on_supabase_email_hook(payload: dict) -> None:
@@ -163,28 +163,28 @@ Notes:
 
 - **Do not use `/send/magic-link` with a Supabase `confirmation_url`.**
   The `/send/magic-link` endpoint (and `EmailServiceClient.send_magic_link`)
-  is designed for **bare opaque tokens** that email-service combines with
+  is designed for **bare opaque tokens** that authmail-relay combines with
   its own `MAGIC_LINK_BASE_URL` env var to build the final link. Passing
   a full Supabase URL into `token=` would either be double-prefixed by
-  `MAGIC_LINK_BASE_URL` or render incorrectly — email-service does not
+  `MAGIC_LINK_BASE_URL` or render incorrectly — authmail-relay does not
   detect that the value is already a full URL.
 - **For Supabase-generated `confirmation_url` / `action_link`, use the
   generic `POST /send` (or `EmailServiceClient.send`) with an
   `html_body` that already contains the full Supabase link.** Supabase
-  owns the URL format; email-service only delivers the rendered HTML.
+  owns the URL format; authmail-relay only delivers the rendered HTML.
 - `token`, `token_hash`, `confirmation_url`, and `action_link` are
-  treated as opaque values produced by Supabase. email-service does not
+  treated as opaque values produced by Supabase. authmail-relay does not
   generate, validate, or expire them.
 - The verification step (`token_hash` → session) is performed by
-  Supabase Auth when the user clicks the link, not by email-service.
-  email-service never creates a Supabase session, JWT, refresh token,
+  Supabase Auth when the user clicks the link, not by authmail-relay.
+  authmail-relay never creates a Supabase session, JWT, refresh token,
   or `auth.uid()` identity.
 
 ---
 
 ## Sample request payloads
 
-These payloads target endpoints email-service already exposes. See
+These payloads target endpoints authmail-relay already exposes. See
 [docs/api.md](api.md) for the full reference. Where a payload uses a
 field that does not match an existing endpoint exactly, the example is
 labelled **conceptual** and should not be treated as a shipped API.
@@ -193,7 +193,7 @@ labelled **conceptual** and should not be treated as a shipped API.
 
 For Supabase Auth integration, use the generic `POST /send` endpoint
 with the Supabase-generated link embedded in `html_body`. Supabase
-owns the full URL; email-service only delivers it.
+owns the full URL; authmail-relay only delivers it.
 
 ```json
 {
@@ -204,8 +204,8 @@ owns the full URL; email-service only delivers it.
 ```
 
 > **About `POST /send/magic-link`.** That dedicated endpoint exists
-> for callers that hand email-service a **bare opaque token** (not a
-> full URL). email-service then combines the token with its own
+> for callers that hand authmail-relay a **bare opaque token** (not a
+> full URL). authmail-relay then combines the token with its own
 > `MAGIC_LINK_BASE_URL` env var to build the final link. It is **not
 > the right endpoint for Supabase-issued `confirmation_url`s**, which
 > are already complete URLs that Supabase needs to recognise on the
@@ -224,7 +224,7 @@ Endpoint: `POST /send/otp`.
 }
 ```
 
-`code` is the OTP value Supabase Auth issued. email-service does not
+`code` is the OTP value Supabase Auth issued. authmail-relay does not
 generate it and does not verify it later.
 
 ### Password reset email
@@ -242,7 +242,7 @@ library mode:
 ```
 
 The reset link itself comes from Supabase
-(`email_action_type=recovery`); email-service only renders it into a
+(`email_action_type=recovery`); authmail-relay only renders it into a
 message body.
 
 ---
@@ -252,7 +252,7 @@ message body.
 ```bash
 # Magic-link email — generic /send with Supabase-issued confirmation URL
 # in html_body (NOT /send/magic-link, which expects a bare opaque token
-# that email-service combines with MAGIC_LINK_BASE_URL).
+# that authmail-relay combines with MAGIC_LINK_BASE_URL).
 curl -X POST http://127.0.0.1:8000/send \
   -H "Authorization: Bearer $EMAIL_SERVICE_API_KEY" \
   -H "Content-Type: application/json" \
@@ -302,7 +302,7 @@ template variables on your side:
 
 Generic templated mail (via `TemplateNotifier` or `POST /send` with a
 pre-rendered body) is the right surface for action types that
-email-service does not have a dedicated endpoint for. Treat
+authmail-relay does not have a dedicated endpoint for. Treat
 `TemplateNotifier` as the integration point for custom Supabase
 templates; if your version does not include it, this is future or
 provider-specific guidance, not a current shipped contract.
@@ -320,7 +320,7 @@ provider-specific guidance, not a current shipped contract.
 - **Keep token expiration controlled by Supabase.** Do not cache
   tokens, do not pre-render emails ahead of time, and do not retry an
   old payload — request a fresh email from Supabase instead.
-- **Never substitute a custom email-service OTP** for the Supabase
+- **Never substitute a custom authmail-relay OTP** for the Supabase
   OTP if any part of your stack relies on Supabase sessions or
   `auth.uid()` RLS.
 
@@ -330,12 +330,12 @@ provider-specific guidance, not a current shipped contract.
 
 To keep the boundary explicit:
 
-- email-service cannot log a user in.
-- email-service cannot create a Supabase session, JWT, or refresh token.
-- email-service cannot satisfy `auth.uid()` based RLS.
-- email-service cannot replace Supabase Auth.
-- email-service cannot verify or expire OTPs / tokens.
-- email-service cannot exchange a `token_hash` or code for a session.
+- authmail-relay cannot log a user in.
+- authmail-relay cannot create a Supabase session, JWT, or refresh token.
+- authmail-relay cannot satisfy `auth.uid()` based RLS.
+- authmail-relay cannot replace Supabase Auth.
+- authmail-relay cannot verify or expire OTPs / tokens.
+- authmail-relay cannot exchange a `token_hash` or code for a session.
 
 If you need any of those, that is Supabase Auth's job (or another full
 auth platform — see [docs/alternatives.md](alternatives.md) and

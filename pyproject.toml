@@ -3,15 +3,15 @@ requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hwan-email-service"
+name = "authmail-relay"
 version = "0.4.2"
-description = "Self-hosted auth email service for Python/FastAPI teams using their own SMTP"
+description = "Self-hosted SMTP relay for auth emails."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "email-service maintainers" }]
-keywords = ["email", "smtp", "fastapi", "magic-link", "otp", "transactional-email"]
+authors = [{ name = "authmail-relay maintainers" }]
+keywords = ["email", "smtp", "fastapi", "magic-link", "otp", "transactional-email", "auth-email", "smtp-relay"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: FastAPI",
@@ -29,7 +29,7 @@ dependencies = []
 # Production deploys should build with pinned constraints, such as a generated
 # requirements.lock from uv lock or pip-compile.
 [tool.setuptools.packages.find]
-include = ["email_service*"]
+include = ["authmail_relay*", "email_service*"]
 exclude = ["tests*", "examples*", "skills*", "roadmap*", "reports*", ".claude*"]
 
 [project.optional-dependencies]
@@ -43,7 +43,8 @@ http = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hwan96-ai/email-service"
-Repository = "https://github.com/hwan96-ai/email-service"
-Issues = "https://github.com/hwan96-ai/email-service/issues"
-Changelog = "https://github.com/hwan96-ai/email-service/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/hwan96-ai/authmail-relay"
+Repository = "https://github.com/hwan96-ai/authmail-relay"
+Documentation = "https://hwan96-ai.github.io/authmail-relay/"
+Issues = "https://github.com/hwan96-ai/authmail-relay/issues"
+Changelog = "https://github.com/hwan96-ai/authmail-relay/blob/master/CHANGELOG.md"

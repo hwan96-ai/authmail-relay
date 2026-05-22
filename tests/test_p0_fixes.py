@@ -27,14 +27,14 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.api import (  # noqa: E402
+from authmail_relay.api import (  # noqa: E402
     MAX_BODY_LEN,
     MAX_SUBJECT_LEN,
     MAX_RECIPIENTS,
     _SlidingWindowLimiter,
     create_app,
 )
-from email_service.sender import (  # noqa: E402
+from authmail_relay.sender import (  # noqa: E402
     ERR_SMTP_DISCONNECT_UNCERTAIN,
     STATUS_DELIVERED,
     STATUS_FAILED,
@@ -42,8 +42,8 @@ from email_service.sender import (  # noqa: E402
     SmtpConfig,
     SmtpSender,
 )
-from email_service.url_validation import validate_webhook_url  # noqa: E402
-from email_service.webhooks import (  # noqa: E402
+from authmail_relay.url_validation import validate_webhook_url  # noqa: E402
+from authmail_relay.webhooks import (  # noqa: E402
     DEFAULT_BACKOFFS,
     _jittered,
     deliver_webhook,
@@ -83,7 +83,7 @@ class TestP0_1_BoundedWebhookBackoff:
         """End-to-end: maximum cumulative sleep across 3 attempts <= 10s."""
         sleeps: list[float] = []
         monkeypatch.setattr(
-            "email_service.webhooks.time.sleep", lambda s: sleeps.append(s)
+            "authmail_relay.webhooks.time.sleep", lambda s: sleeps.append(s)
         )
         transport = httpx.MockTransport(lambda r: httpx.Response(500))
         client = httpx.Client(transport=transport)
@@ -152,7 +152,7 @@ class TestP0_2_SSRFDefense:
         assert validate_webhook_url("http://127.0.0.1/x") == "http://127.0.0.1/x"
 
     def test_api_rejects_aws_metadata_at_request_validation(self):
-        from email_service.notifiers import OTPNotifier
+        from authmail_relay.notifiers import OTPNotifier
         app = create_app(
             sender=MagicMock(), api_key="k", otp=MagicMock(spec=OTPNotifier)
         )
@@ -176,7 +176,7 @@ class TestP0_2_SSRFDefense:
 # ============================================================================
 class TestP0_3_SizeLimits:
     def _app(self):
-        from email_service.notifiers import OTPNotifier
+        from authmail_relay.notifiers import OTPNotifier
         sender = MagicMock()
         sender.send.return_value = SendResult(sent=True, message_id="<x@h>")
         return create_app(
@@ -258,7 +258,7 @@ class TestP0_4_RateLimit:
         assert limiter.check("b", now=101)[0] is True
 
     def test_api_returns_429_after_exceeding_limit(self):
-        from email_service.notifiers import OTPNotifier
+        from authmail_relay.notifiers import OTPNotifier
         sender = MagicMock()
         sender.send.return_value = SendResult(sent=True, message_id="<x>")
         limiter = _SlidingWindowLimiter(max_requests=2, window_seconds=60.0)
@@ -325,8 +325,8 @@ class TestP0_5_DisconnectDuringSendmail:
             s.sendmail.side_effect = smtplib.SMTPServerDisconnected("mid-flow")
             return s
 
-        with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-             patch("email_service.sender.time.sleep") as mock_sleep:
+        with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+             patch("authmail_relay.sender.time.sleep") as mock_sleep:
             result = sender.send("to@t.com", "s", "<p>x</p>")
 
         assert result.sent is False
@@ -355,8 +355,8 @@ class TestP0_5_DisconnectDuringSendmail:
             s.__exit__.side_effect = smtplib.SMTPServerDisconnected("quit died")
             return s
 
-        with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-             patch("email_service.sender.time.sleep") as mock_sleep:
+        with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+             patch("authmail_relay.sender.time.sleep") as mock_sleep:
             result = sender.send("to@t.com", "s", "<p>x</p>")
 
         assert result.sent is True
@@ -378,8 +378,8 @@ class TestP0_5_DisconnectDuringSendmail:
             s.__exit__.side_effect = smtplib.SMTPServerDisconnected("after")
             return s
 
-        with patch("email_service.sender.smtplib.SMTP", side_effect=make_server), \
-             patch("email_service.sender.time.sleep"):
+        with patch("authmail_relay.sender.smtplib.SMTP", side_effect=make_server), \
+             patch("authmail_relay.sender.time.sleep"):
             result = sender.send(
                 "to@t.com", "s", "<p>x</p>", bcc=["bad@t.com"]
             )

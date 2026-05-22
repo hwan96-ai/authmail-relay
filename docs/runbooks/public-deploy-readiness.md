@@ -1,12 +1,12 @@
 # Runbook: Public Deploy Readiness
 
-운영 환경에 `email-service` 를 인터넷 경유로 노출(또는 신뢰 경계 바깥의 caller 가 접근 가능한 URL 로 노출)하기 전 통과해야 하는 보안/안정성 체크리스트.
+운영 환경에 `authmail-relay` 를 인터넷 경유로 노출(또는 신뢰 경계 바깥의 caller 가 접근 가능한 URL 로 노출)하기 전 통과해야 하는 보안/안정성 체크리스트.
 
 > **중요**: 저장소가 public-ready 라는 사실은 *코드/문서가 공개 가능하다* 는 뜻일 뿐이다. **deployed URL 의 public 노출이 안전하다는 의미가 아니다**. 본 runbook 의 게이트를 모두 통과한 뒤에만 실제 endpoint 를 공개한다.
 
 ## Purpose and scope
 
-- 대상: `python -m email_service` 로 띄운 HTTP 서비스 모드를 외부에서 접근 가능한 URL 뒤에 배치하는 모든 배포.
+- 대상: `python -m authmail_relay` 로 띄운 HTTP 서비스 모드를 외부에서 접근 가능한 URL 뒤에 배치하는 모든 배포.
 - 비대상: 라이브러리 모드(같은 프로세스 import) 사용. 내부망 only, mTLS/VPN 안에서만 접근 가능한 deploy 는 일부 항목 완화 가능 — 단 본 문서의 default 는 "interneten 노출" 기준.
 
 ## Public URL readiness decision rule
@@ -120,7 +120,7 @@
 
 ## CORS / public access assumptions
 
-- `email-service` 는 **server-to-server** 사용을 전제로 한다. 브라우저에서 직접 호출하는 모델 아님.
+- `authmail-relay` 는 **server-to-server** 사용을 전제로 한다. 브라우저에서 직접 호출하는 모델 아님.
 - CORS 를 열어 브라우저에서 `API_KEY` 를 그대로 사용하면 키 노출 — 금지.
 - 정말 필요한 경우는 frontend 가 자체 backend 를 통해 proxy 하는 패턴만 사용.
 - `/docs` / `/openapi.json` 공개 필요 없다면 앞단에서 차단.

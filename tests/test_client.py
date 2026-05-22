@@ -1,4 +1,4 @@
-"""Tests for email_service.client.EmailServiceClient."""
+"""Tests for authmail_relay.client.EmailServiceClient."""
 import json
 import sys
 from pathlib import Path
@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from email_service.client import EmailServiceClient, EmailServiceError
+from authmail_relay.client import EmailServiceClient, EmailServiceError
 
 
 def _handler(responses):
@@ -28,7 +28,7 @@ def _handler(responses):
 
 def _client(handler, api_key: str = "key") -> EmailServiceClient:
     return EmailServiceClient(
-        "http://email-service:8000",
+        "http://authmail-relay:8000",
         api_key,
         transport=httpx.MockTransport(handler),
     )
@@ -95,7 +95,7 @@ class TestSend:
             with pytest.raises(httpx.HTTPStatusError):
                 c.send("u@t.com", "s", "<p>x</p>")
 
-    def test_502_raises_email_service_error_with_code(self):
+    def test_502_raises_authmail_relay_error_with_code(self):
         h, _ = _handler(
             {
                 ("POST", "/send"): (

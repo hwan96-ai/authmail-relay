@@ -10,9 +10,9 @@ Observability and resilience features. All opt-in. Defaults are unchanged.
 | `METRICS_REQUIRE_AUTH` | `false` | Require `Authorization: Bearer $API_KEY` on `/metrics`. **Set to `true` in production.** |
 
 ```bash
-pip install "hwan-email-service[http]"
+pip install "authmail-relay[http]"
 export API_KEY=$(openssl rand -hex 32)
-METRICS_ENABLED=true METRICS_REQUIRE_AUTH=true python -m email_service
+METRICS_ENABLED=true METRICS_REQUIRE_AUTH=true python -m authmail_relay
 curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/metrics
 ```
 
@@ -49,7 +49,7 @@ Sample alert rule:
   expr: rate(email_send_total{result="failure"}[5m]) > 0.05
   for: 10m
   annotations:
-    summary: "email-service failure rate above 5% for 10 minutes"
+    summary: "authmail-relay failure rate above 5% for 10 minutes"
 ```
 
 ## Structured logs
@@ -72,12 +72,12 @@ include only `to_hash` (SHA-256, first 8 chars), `error_code`, `duration_ms`,
 
 Every request echoes `X-Request-ID`; if the client omits it, the server
 assigns a UUID. The ID propagates into SMTP send logs, so gateway →
-email-service → SMTP can be grepped on a single ID.
+authmail-relay → SMTP can be grepped on a single ID.
 
 ## SMTP retries (library mode)
 
 ```python
-from email_service import SmtpSender, SmtpConfig
+from authmail_relay import SmtpSender, SmtpConfig
 
 sender = SmtpSender(
     SmtpConfig(host="smtp.gmail.com", port=587, user="u", password="p"),

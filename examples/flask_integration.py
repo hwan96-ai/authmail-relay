@@ -1,7 +1,7 @@
 """Flask integration example: send a magic-link on signup.
 
 Run:
-    pip install flask hwan-email-service
+    pip install flask authmail-relay
     SMTP_HOST=localhost SMTP_PORT=1025 python examples/flask_integration.py
 
 The MagicLinkNotifier is constructed once at app startup and reused per request.
@@ -18,8 +18,8 @@ except ImportError:  # pragma: no cover
         "Flask is not installed. Install it with `pip install flask` to run this example."
     )
 
-from email_service.notifiers import MagicLinkNotifier
-from email_service.sender import SmtpConfig, SmtpSender
+from authmail_relay.notifiers import MagicLinkNotifier
+from authmail_relay.sender import SmtpConfig, SmtpSender
 
 
 def build_notifier() -> MagicLinkNotifier:

@@ -1,4 +1,4 @@
-# Contributing to email-service
+# Contributing to authmail-relay
 
 Thanks for your interest in contributing! This guide gets you from a fresh
 clone to a passing test suite and a clean PR.
@@ -6,8 +6,8 @@ clone to a passing test suite and a clean PR.
 ## Dev setup
 
 ```bash
-git clone https://github.com/hwan96-ai/email-service.git
-cd email-service
+git clone https://github.com/hwan96-ai/authmail-relay.git
+cd authmail-relay
 python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -e ".[dev,http]"
@@ -29,7 +29,7 @@ pytest tests/ -q
 Run a single file or test:
 
 ```bash
-pytest tests/test_email_service.py::TestMagicLinkNotifier -q
+pytest tests/test_authmail_relay.py::TestMagicLinkNotifier -q
 ```
 
 All PRs must keep the full suite green. Add tests for new behavior; prefer
@@ -66,8 +66,8 @@ Before opening a PR:
 - Python 3.10+ syntax (`str | None`, PEP 604 unions)
 - Type hints on all public function signatures
 - `html.escape` for all user-supplied data rendered into HTML
-- No new runtime dependencies in the core library (`email_service.sender`,
-  `email_service.notifiers`) — HTTP and metrics deps live behind the
+- No new runtime dependencies in the core library (`authmail_relay.sender`,
+  `authmail_relay.notifiers`) — HTTP and metrics deps live behind the
   `[http]` extra
 
 ## Reporting bugs / requesting features

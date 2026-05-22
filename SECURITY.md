@@ -2,15 +2,20 @@
 
 ## Supported versions
 
-Security fixes target the latest released version of `hwan-email-service` on PyPI
+Security fixes target the latest released version of `authmail-relay` on PyPI
 and the corresponding `master` branch. Older versions are not patched.
+
+Note: this project was previously published on PyPI as `hwan-email-service`.
+The `hwan-email-service` distribution is retained on PyPI for historical
+installs and is not patched separately — security releases land on
+`authmail-relay`.
 
 ## Reporting a vulnerability
 
 Please **do not open a public GitHub issue** for security-sensitive findings.
 
 Report vulnerabilities privately via GitHub's
-[Private Vulnerability Reporting](https://github.com/hwan96-ai/email-service/security/advisories/new)
+[Private Vulnerability Reporting](https://github.com/hwan96-ai/authmail-relay/security/advisories/new)
 for this repository. This routes the report directly to the maintainers and
 keeps exploit details out of public view until a fix is ready.
 
