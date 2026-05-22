@@ -4,6 +4,19 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-22
+
+First release under the `authmail-relay` name. **No HTTP API, environment variable, or webhook schema changes** compared to `0.4.2`. Code behavior is unchanged; this release packages the rename and re-establishes a clean release lineage on the new PyPI distribution.
+
+### Highlights
+
+- Renamed the project to **authmail-relay** (repository, distribution, import package, tagline).
+- New PyPI distribution: [`authmail-relay`](https://pypi.org/project/authmail-relay/). Install with `pip install authmail-relay`.
+- New import package: `authmail_relay`. Prefer `import authmail_relay` / `from authmail_relay import ...` and `python -m authmail_relay` going forward.
+- Legacy import shim: `email_service` remains temporarily available and re-exports `authmail_relay`, emitting a `DeprecationWarning` on import. Intended for one transitional release cycle.
+- Previous PyPI distribution [`hwan-email-service`](https://pypi.org/project/hwan-email-service/) remains on PyPI as legacy history and will not receive new releases.
+- No HTTP API / env var / webhook schema changes — existing deployments do not need configuration updates to upgrade.
+
 ### Renamed (BREAKING for new installs of the legacy distribution)
 
 - **Project rename**: `email-service` / `hwan-email-service` / `email_service` → `authmail-relay` / `authmail-relay` / `authmail_relay`. The repository, the PyPI distribution, and the Python import package now all share the `authmail-relay` / `authmail_relay` naming. Tagline updated to *"Self-hosted SMTP relay for auth emails."*
